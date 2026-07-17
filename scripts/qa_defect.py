@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)
 DEFECTS_DIR = os.path.join(_PROJECT_ROOT, ".ai/defects")
+REGISTRY_PATH = os.path.join(DEFECTS_DIR, "registry.json")
 
 
 def _load_defects():
