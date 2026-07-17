@@ -1,129 +1,37 @@
-﻿name: QA Gate 鈥?PR Check
+name: QA Self-Test
 
 on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - '**.py'
-      - '.ai/**'
-      - '.pre-commit-config.yaml'
     branches: [main, develop]
 
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
-  qa-pipeline:
-    runs-on:
-  push:
-    branches: [main] ubuntu-latest
-    timeout-minutes: 15
+  self-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-python@v5
         with:
-          python-version:
-  push:
-    branches: [main] '3.12'
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: |
-          pip install pyyaml pyyaml jsonschema
+        run: pip install pyyaml
 
-      # =============================================
-      # Phase 0: QA System Integrity
-      # =============================================
-      - name: P0 鈥?QA 绯荤粺鑷
-        id: self_test
-        run: |
-          python scripts/qa_self_test.py
-        continue-on-error: true
+      - name: QA Self Test
+        run: python scripts/qa_self_test.py
 
-      # =============================================
-      # Phase 1: Full QA Check (10 checkers)
-      # =============================================
-      - name: P1 鈥?QA 鍏ㄩ噺妫€鏌?        id: qa_check
-        run: |
-          python scripts/qa_check.py health
-        continue-on-error: true
+      - name: QA Full Check
+        run: python scripts/qa_check.py health
 
-      # =============================================
-      # Phase 2: Issue Classification
-      # =============================================
-      - name: P2 鈥?闂鍒嗙被
-        id: classify
-        run: |
-          python scripts/qa_classify.py
-        continue-on-error: true
+      - name: QA Gate
+        run: python scripts/qa_gate.py
 
-      # =============================================
-      # Phase 3: Quality Gate
-      # =============================================
-      - name: P3 鈥?鎬婚椄闂?        id: final_gate
-        run: |
-          python scripts/qa_gate.py
-
-      # =============================================
-      # Upload artifacts for AI/agent consumption
-      # =============================================
-      - name: Upload QA artifacts
+      - name: Upload QA Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: qa-report
-          path: |
-            .ai/logs/qa-report.json
-            .ai/fixes/pending.json
-            .ai/config/quality-plan.yaml
+          path: .ai/logs/qa-report.json
           retention-days: 7
-
-      # =============================================
-      # PR Comment with Summary
-      # =============================================
-      - name: Comment PR
-        uses: actions/github-script@v7
-        if: always() && github.event_name == 'pull_request'
-        with:
-          script: |
-            const fs = require('fs');
-            const reportPath = '.ai/logs/qa-report.json';
-            const pendingPath = '.ai/fixes/pending.json';
-            
-            let summary = '## QA Gate Report\n\n';
-            
-            if (fs.existsSync(reportPath)) {
-              const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-              summary += `**Errors:** ${report.errors} | **Blocked:** ${report.blocked}\n\n`;
-              summary += '| Checker | Status |\n|--------|--------|\n';
-              for (const [cid, data] of Object.entries(report.checkers || {})) {
-                if (data.skipped) continue;
-                const icon = data.errors > 0 ? '鉂? : '鉁?;
-                summary += `| ${data.label || cid} | ${icon} ${data.errors} errors |\n`;
-              }
-            }
-            
-            if (fs.existsSync(pendingPath)) {
-              const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf8'));
-              const tasks = pending.classified_tasks || pending.pending || [];
-              if (tasks.length > 0) {
-                summary += '\n**Pending fixes (agent):**\n';
-                for (const t of tasks.slice(0, 10)) {
-                  summary += `- [${t.severity}] ${t.file}:${t.line} 鈫?${t.action}\n`;
-                }
-                if (tasks.length > 10) summary += `- ... ${tasks.length - 10} more\n`;
-              }
-            }
-            
-            const verdict = process.env.GATE_VERDICT || 'DENY';
-            summary += `\n**Gate Verdict:** ${verdict === 'ALLOW' ? '鉁?ALLOW' : '鉂?DENY'}`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary,
-            });
-
