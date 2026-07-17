@@ -1,6 +1,8 @@
-name: QA Gate — PR Check
+﻿name: QA Gate 鈥?PR Check
 
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - '**.py'
@@ -14,14 +16,18 @@ permissions:
 
 jobs:
   qa-pipeline:
-    runs-on: ubuntu-latest
+    runs-on:
+  push:
+    branches: [main] ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version:
+  push:
+    branches: [main] '3.12'
 
       - name: Install dependencies
         run: |
@@ -30,7 +36,7 @@ jobs:
       # =============================================
       # Phase 0: QA System Integrity
       # =============================================
-      - name: P0 — QA 系统自检
+      - name: P0 鈥?QA 绯荤粺鑷
         id: self_test
         run: |
           python scripts/qa_self_test.py
@@ -39,8 +45,7 @@ jobs:
       # =============================================
       # Phase 1: Full QA Check (10 checkers)
       # =============================================
-      - name: P1 — QA 全量检查
-        id: qa_check
+      - name: P1 鈥?QA 鍏ㄩ噺妫€鏌?        id: qa_check
         run: |
           python scripts/qa_check.py health
         continue-on-error: true
@@ -48,7 +53,7 @@ jobs:
       # =============================================
       # Phase 2: Issue Classification
       # =============================================
-      - name: P2 — 问题分类
+      - name: P2 鈥?闂鍒嗙被
         id: classify
         run: |
           python scripts/qa_classify.py
@@ -57,8 +62,7 @@ jobs:
       # =============================================
       # Phase 3: Quality Gate
       # =============================================
-      - name: P3 — 总闸门
-        id: final_gate
+      - name: P3 鈥?鎬婚椄闂?        id: final_gate
         run: |
           python scripts/qa_gate.py
 
@@ -96,7 +100,7 @@ jobs:
               summary += '| Checker | Status |\n|--------|--------|\n';
               for (const [cid, data] of Object.entries(report.checkers || {})) {
                 if (data.skipped) continue;
-                const icon = data.errors > 0 ? '❌' : '✅';
+                const icon = data.errors > 0 ? '鉂? : '鉁?;
                 summary += `| ${data.label || cid} | ${icon} ${data.errors} errors |\n`;
               }
             }
@@ -107,14 +111,14 @@ jobs:
               if (tasks.length > 0) {
                 summary += '\n**Pending fixes (agent):**\n';
                 for (const t of tasks.slice(0, 10)) {
-                  summary += `- [${t.severity}] ${t.file}:${t.line} → ${t.action}\n`;
+                  summary += `- [${t.severity}] ${t.file}:${t.line} 鈫?${t.action}\n`;
                 }
                 if (tasks.length > 10) summary += `- ... ${tasks.length - 10} more\n`;
               }
             }
             
             const verdict = process.env.GATE_VERDICT || 'DENY';
-            summary += `\n**Gate Verdict:** ${verdict === 'ALLOW' ? '✅ ALLOW' : '❌ DENY'}`;
+            summary += `\n**Gate Verdict:** ${verdict === 'ALLOW' ? '鉁?ALLOW' : '鉂?DENY'}`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -122,3 +126,4 @@ jobs:
               repo: context.repo.repo,
               body: summary,
             });
+
