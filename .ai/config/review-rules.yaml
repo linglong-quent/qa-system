@@ -338,3 +338,5 @@ docconsistency_check:
   - src/
   doc_dirs:
   - docs/
+agent_boundary_exempt:
+- scripts/qa_gate.py
