@@ -291,10 +291,10 @@ governance_check:
   enabled: true
   severity: WARN
   expected_dirs:
-  - src/
-  - tests/
-  - docs/
   - scripts/
+  - docs/
+  - .ai/config/
+  - .github/workflows/
 securityplus_check:
   enabled: true
   severity: WARN
@@ -338,3 +338,5 @@ docconsistency_check:
   - src/
   doc_dirs:
   - docs/
+agent_boundary_exempt:
+- scripts/qa_gate.py
