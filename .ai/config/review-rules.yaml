@@ -291,10 +291,10 @@ governance_check:
   enabled: true
   severity: WARN
   expected_dirs:
-  - src/
-  - tests/
-  - docs/
   - scripts/
+  - docs/
+  - .ai/config/
+  - .github/workflows/
 securityplus_check:
   enabled: true
   severity: WARN
