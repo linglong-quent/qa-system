@@ -1,0 +1,9 @@
+version: '2.0'
+levels:
+  L1: 项目级
+  L2: 模块级
+  L3: 接口级
+required_adr_types:
+- 架构决策
+- 安全决策
+- 合规决策

@@ -1,0 +1,9 @@
+version: '2.0'
+link_whitelist: []
+file_whitelist: []
+terms:
+  approved: []
+  forbidden:
+  - todo
+  - fixme
+  - hack

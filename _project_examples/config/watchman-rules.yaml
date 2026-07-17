@@ -1,0 +1,49 @@
+# watchman-rules.yaml — P-A5 告警规则配置
+# 定义评分持续下降、PPB 超限等自动告警规则
+version: "1.0"
+last_updated: "2026-07-16"
+
+# 告警通道
+channels:
+  - type: "github_issue"
+    enabled: true
+  - type: "pr_comment"
+    enabled: true
+  - type: "log"
+    enabled: true
+
+# 触发规则
+rules:
+  - id: "WATCH-SCORE-DECLINE"
+    description: "文档评分连续下降"
+    metric: "doc_health_score"
+    condition: "declining"
+    consecutive_samples: 3
+    severity: "warning"
+    action: "create_issue"
+
+  - id: "WATCH-PPB-BREACH"
+    description: "PPB ±3σ 熔断触发"
+    metric: "any"
+    condition: "beyond_3sigma"
+    severity: "critical"
+    action: "block_pr"
+
+  - id: "WATCH-PPB-WARN"
+    description: "PPB ±2σ 预警触发"
+    metric: "any"
+    condition: "beyond_2sigma"
+    severity: "warning"
+    action: "notify"
+
+  - id: "WATCH-CAR-STALE"
+    description: "CAR 报告未关闭超过 7 天"
+    metric: "car_age_days"
+    condition: "> 7"
+    severity: "warning"
+    action: "remind"
+
+# 抑制规则（防止告警风暴）
+suppression:
+  max_alerts_per_hour: 10
+  cooldown_minutes: 30

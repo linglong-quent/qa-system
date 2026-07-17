@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>QA 系统架构图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;font-family:'Segoe UI',system-ui,sans-serif;display:flex;justify-content:center;padding:40px 20px}
+svg{max-width:1100px;width:100%;height:auto}
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1050 1380" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0,0 L10,5 L0,10 Z" fill="#7c8a9e"/>
+  </marker>
+  <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0,0 L10,5 L0,10 Z" fill="#4ade80"/>
+  </marker>
+  <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0,0 L10,5 L0,10 Z" fill="#f87171"/>
+  </marker>
+  <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0,0 L10,5 L0,10 Z" fill="#fb923c"/>
+  </marker>
+
+  <linearGradient id="bg-plan" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#1e3a5f"/><stop offset="100%" stop-color="#1a2d4a"/>
+  </linearGradient>
+  <linearGradient id="bg-check" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2d3748"/><stop offset="100%" stop-color="#1a202c"/>
+  </linearGradient>
+  <linearGradient id="bg-classify" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#3b2f2f"/><stop offset="100%" stop-color="#2a2020"/>
+  </linearGradient>
+  <linearGradient id="bg-gate" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#4a2020"/><stop offset="100%" stop-color="#3a1a1a"/>
+  </linearGradient>
+  <linearGradient id="bg-act" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2a3a2a"/><stop offset="100%" stop-color="#1a2a1a"/>
+  </linearGradient>
+  <linearGradient id="bg-cb" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#3a2a4a"/><stop offset="100%" stop-color="#2a1a3a"/>
+  </linearGradient>
+</defs>
+
+<!-- Background -->
+<rect width="1050" height="1380" rx="16" fill="#16213e" opacity="0.95"/>
+
+<!-- Title -->
+<text x="525" y="40" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="bold">QA 系统架构 — 全链路闭环</text>
+<text x="525" y="62" text-anchor="middle" fill="#7c8a9e" font-size="13">Plan → Check → Classify → Gate → Defect → CB Fix → Feedback → Plan</text>
+
+<!-- ============================================ -->
+<!-- LAYER 0: PLAN -->
+<!-- ============================================ -->
+<rect x="40" y="85" width="970" height="175" rx="10" fill="url(#bg-plan)" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="110" fill="#60a5fa" font-size="14" font-weight="bold">P  PLAN 规划层</text>
+<text x="525" y="110" text-anchor="middle" fill="#7c8a9e" font-size="11">开工前定义质量标准</text>
+
+<!-- Plan boxes -->
+<rect x="70" y="125" width="250" height="55" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+<text x="195" y="148" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="bold">qa_plan.py</text>
+<text x="195" y="166" text-anchor="middle" fill="#7c8a9e" font-size="10">质量规划器</text>
+
+<rect x="400" y="125" width="250" height="55" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+<text x="525" y="148" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="bold">quality-plan.yaml</text>
+<text x="525" y="166" text-anchor="middle" fill="#7c8a9e" font-size="10">6 项目标 · 4 风险区</text>
+
+<rect x="730" y="125" width="250" height="55" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+<text x="855" y="148" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="bold">CLAUDE.md</text>
+<text x="855" y="166" text-anchor="middle" fill="#7c8a9e" font-size="10">AI 编码约束指令</text>
+
+<rect x="70" y="195" width="910" height="48" rx="6" fill="#1a2d4a" stroke="#3b82f6" stroke-width="0.5"/>
+<text x="525" y="214" text-anchor="middle" fill="#60a5fa" font-size="11">Q1 零密钥 · Q2 架构合规 · Q3 无前视 · Q4 可维护 · Q5 配置自洽 · Q6 AI 约束</text>
+<text x="525" y="232" text-anchor="middle" fill="#4b5563" font-size="10">行业标准: OWASP · NASA Power of 10 · ISO 25010 · IEEE 730</text>
+
+<!-- Arrow Plan → Check -->
+<line x1="525" y1="260" x2="525" y2="290" stroke="#7c8a9e" stroke-width="2" marker-end="url(#arrow)"/>
+
+<!-- ============================================ -->
+<!-- LAYER 1: CHECK -->
+<!-- ============================================ -->
+<rect x="40" y="295" width="970" height="255" rx="10" fill="url(#bg-check)" stroke="#7c8a9e" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="320" fill="#e2e8f0" font-size="14" font-weight="bold">D  DO / C  CHECK 执行检测层</text>
+<text x="525" y="320" text-anchor="middle" fill="#7c8a9e" font-size="11">智能体按标准生成 → QA 自动验证</text>
+
+<!-- Checker boxes - top row (7 code) -->
+<rect x="70" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="130" y="356" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="bold">inplace</text>
+<text x="130" y="370" text-anchor="middle" fill="#6b7280" font-size="9">WARN</text>
+
+<rect x="200" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="260" y="356" text-anchor="middle" fill="#f87171" font-size="11" font-weight="bold">lookahead</text>
+<text x="260" y="370" text-anchor="middle" fill="#6b7280" font-size="9">BLOCKER</text>
+
+<rect x="330" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="390" y="356" text-anchor="middle" fill="#f87171" font-size="11" font-weight="bold">secret</text>
+<text x="390" y="370" text-anchor="middle" fill="#6b7280" font-size="9">BLOCKER</text>
+
+<rect x="460" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="520" y="356" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="bold">deadcode</text>
+<text x="520" y="370" text-anchor="middle" fill="#6b7280" font-size="9">WARN</text>
+
+<rect x="590" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="650" y="356" text-anchor="middle" fill="#f87171" font-size="11" font-weight="bold">cyclic</text>
+<text x="650" y="370" text-anchor="middle" fill="#6b7280" font-size="9">BLOCKER</text>
+
+<rect x="720" y="338" width="120" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="780" y="356" text-anchor="middle" fill="#f87171" font-size="11" font-weight="bold">code-ban</text>
+<text x="780" y="370" text-anchor="middle" fill="#6b7280" font-size="9">BLOCKER</text>
+
+<rect x="850" y="338" width="130" height="42" rx="6" fill="#2d3748" stroke="#9ca3af" stroke-width="0.8"/>
+<text x="915" y="356" text-anchor="middle" fill="#f87171" font-size="11" font-weight="bold">import-boundary</text>
+<text x="915" y="370" text-anchor="middle" fill="#6b7280" font-size="9">BLOCKER</text>
+
+<!-- Checker boxes - bottom row (3 meta) -->
+<rect x="70" y="392" width="200" height="42" rx="6" fill="#374151" stroke="#6b7280" stroke-width="0.8"/>
+<text x="170" y="410" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="bold">config-audit</text>
+<text x="170" y="424" text-anchor="middle" fill="#6b7280" font-size="9">WARN — 配置自审</text>
+
+<rect x="290" y="392" width="200" height="42" rx="6" fill="#374151" stroke="#6b7280" stroke-width="0.8"/>
+<text x="390" y="410" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="bold">quality-gates</text>
+<text x="390" y="424" text-anchor="middle" fill="#6b7280" font-size="9">WARN — 质量门控</text>
+
+<rect x="510" y="392" width="200" height="42" rx="6" fill="#374151" stroke="#6b7280" stroke-width="0.8"/>
+<text x="610" y="410" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="bold">claude-validation</text>
+<text x="610" y="424" text-anchor="middle" fill="#6b7280" font-size="9">WARN — CLAUDE 验证</text>
+
+<!-- Engine -->
+<rect x="270" y="455" width="510" height="55" rx="10" fill="#2563eb" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="525" y="478" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold">HealthScorer 引擎</text>
+<text x="525" y="497" text-anchor="middle" fill="#93c5fd" font-size="11">chk_healthscorer.py — 统一驱动 10 个 checker + 2 插件</text>
+
+<rect x="70" y="465" width="180" height="35" rx="6" fill="#1a202c" stroke="#3b82f6" stroke-width="0.5"/>
+<text x="160" y="487" text-anchor="middle" fill="#93c5fd" font-size="10">.ai/config/review-rules.yaml</text>
+
+<!-- Arrow Check → Classify -->
+<line x1="525" y1="550" x2="525" y2="580" stroke="#7c8a9e" stroke-width="2" marker-end="url(#arrow)"/>
+
+<!-- ============================================ -->
+<!-- LAYER 2: CLASSIFY -->
+<!-- ============================================ -->
+<rect x="40" y="585" width="970" height="100" rx="10" fill="url(#bg-classify)" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="610" fill="#fb923c" font-size="14" font-weight="bold">CLASSIFY 分类层</text>
+<text x="525" y="610" text-anchor="middle" fill="#7c8a9e" font-size="11">问题结构化 → 智能体可执行</text>
+
+<rect x="70" y="625" width="420" height="45" rx="8" fill="#3b2f2f" stroke="#fb923c" stroke-width="1"/>
+<text x="280" y="648" text-anchor="middle" fill="#fdba74" font-size="13" font-weight="bold">qa_classify.py</text>
+<text x="280" y="664" text-anchor="middle" fill="#7c8a9e" font-size="10">读取 qa-report.json → 分类 → 输出 pending.json</text>
+
+<rect x="560" y="625" width="420" height="45" rx="8" fill="#3b2f2f" stroke="#fb923c" stroke-width="1"/>
+<text x="770" y="648" text-anchor="middle" fill="#fdba74" font-size="13" font-weight="bold">.ai/fixes/pending.json</text>
+<text x="770" y="664" text-anchor="middle" fill="#7c8a9e" font-size="10">修复指导 · 严重级别 · 预计耗时</text>
+
+<!-- Arrow Classify → Gate -->
+<line x1="525" y1="685" x2="525" y2="715" stroke="#7c8a9e" stroke-width="2" marker-end="url(#arrow)"/>
+
+<!-- ============================================ -->
+<!-- LAYER 3: GATE -->
+<!-- ============================================ -->
+<rect x="40" y="720" width="970" height="175" rx="10" fill="url(#bg-gate)" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="745" fill="#f87171" font-size="14" font-weight="bold">GATE 门控层</text>
+<text x="525" y="745" text-anchor="middle" fill="#7c8a9e" font-size="11">保证不产出不良品，不漏检不良品</text>
+
+<rect x="70" y="762" width="420" height="55" rx="8" fill="#4a2020" stroke="#f87171" stroke-width="1"/>
+<text x="280" y="785" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="bold">qa_gate.py</text>
+<text x="280" y="803" text-anchor="middle" fill="#7c8a9e" font-size="10">8 道门控 → ALLOW / DENY</text>
+
+<rect x="560" y="762" width="420" height="55" rx="8" fill="#4a2020" stroke="#f87171" stroke-width="1"/>
+<text x="770" y="785" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="bold">qa_defect.py</text>
+<text x="770" y="803" text-anchor="middle" fill="#7c8a9e" font-size="10">不良品追踪 → register.json → lifecycle</text>
+
+<!-- 8 gates row -->
+<rect x="70" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="120" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">① 系统完整性</text>
+
+<rect x="178" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="228" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">② 规划存在</text>
+
+<rect x="286" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="336" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">③ 全检查器</text>
+
+<rect x="394" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="444" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">④ 零阻断</text>
+
+<rect x="502" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="552" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">⑤ 门通过</text>
+
+<rect x="610" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="660" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">⑥ 待处理零</text>
+
+<rect x="718" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="768" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">⑦ 配置自洽</text>
+
+<rect x="826" y="830" width="100" height="30" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.5"/>
+<text x="876" y="849" text-anchor="middle" fill="#fca5a5" font-size="9">⑧ 自检过</text>
+
+<rect x="70" y="870" width="910" height="16" rx="4" fill="#3a1a1a" stroke="#f87171" stroke-width="0.3"/>
+<text x="525" y="882" text-anchor="middle" fill="#f87171" font-size="10">DENY → 写入 CB 收件箱 inbox.json + 登记缺陷 registry.json</text>
+
+<!-- DENY arrow down to CB -->
+<line x1="290" y1="895" x2="290" y2="940" stroke="#f87171" stroke-width="2" marker-end="url(#arrow-red)"/>
+
+<!-- ALLOW arrow right and up -->
+<text x="600" y="882" fill="#4ade80" font-size="10" font-weight="bold">ALLOW → 提交</text>
+
+<!-- ============================================ -->
+<!-- LAYER 4: CB FIX -->
+<!-- ============================================ -->
+<rect x="40" y="945" width="970" height="160" rx="10" fill="url(#bg-cb)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="970" fill="#a78bfa" font-size="14" font-weight="bold">FIX 修复层 — CB Agent</text>
+<text x="525" y="970" text-anchor="middle" fill="#7c8a9e" font-size="11">读任务 → 修代码 → 验证 → 回写</text>
+
+<rect x="70" y="990" width="280" height="45" rx="8" fill="#3a2a4a" stroke="#a78bfa" stroke-width="1"/>
+<text x="210" y="1013" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="bold">inbox.json</text>
+<text x="210" y="1029" text-anchor="middle" fill="#7c8a9e" font-size="10">QA 投递的任务收件箱</text>
+
+<rect x="385" y="990" width="280" height="45" rx="8" fill="#3a2a4a" stroke="#a78bfa" stroke-width="1"/>
+<text x="525" y="1013" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="bold">qa_cb_tick.py</text>
+<text x="525" y="1029" text-anchor="middle" fill="#7c8a9e" font-size="10">每 3 秒心跳轮询 · 去重执行</text>
+
+<rect x="700" y="990" width="280" height="45" rx="8" fill="#3a2a4a" stroke="#a78bfa" stroke-width="1"/>
+<text x="840" y="1013" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="bold">fixed_result.json</text>
+<text x="840" y="1029" text-anchor="middle" fill="#7c8a9e" font-size="10">修复结果 → QA 复检</text>
+
+<line x1="350" y1="1012" x2="380" y2="1012" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="665" y1="1012" x2="695" y2="1012" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="70" y="1050" width="910" height="40" rx="6" fill="#2a1a3a" stroke="#a78bfa" stroke-width="0.5"/>
+<text x="525" y="1070" text-anchor="middle" fill="#c4b5fd" font-size="11">CB: 读 CLAUDE.md → 修复代码 → 跑 qa_check.py 验证 → 写入 processed.log 去重</text>
+
+<!-- CB → ALLOW feedback loop -->
+<line x1="970" y1="1012" x2="1000" y2="1012" stroke="#4ade80" stroke-width="1.5"/>
+<line x1="1000" y1="1012" x2="1000" y2="510" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="5,3"/>
+<line x1="1000" y1="510" x2="970" y2="510" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+<text x="1010" y="760" fill="#4ade80" font-size="10" transform="rotate(-90,1010,760)">CB 修复通过 → QA 复检</text>
+
+<!-- ============================================ -->
+<!-- LAYER 5: ACT (FEEDBACK) -->
+<!-- ============================================ -->
+<rect x="40" y="1130" width="970" height="115" rx="10" fill="url(#bg-act)" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="60" y="1155" fill="#4ade80" font-size="14" font-weight="bold">A  ACT 反馈层</text>
+<text x="525" y="1155" text-anchor="middle" fill="#7c8a9e" font-size="11">检查结果 → 规划更新 → 下一轮标准更准</text>
+
+<rect x="70" y="1172" width="420" height="55" rx="8" fill="#2a3a2a" stroke="#4ade80" stroke-width="1"/>
+<text x="280" y="1195" text-anchor="middle" fill="#86efac" font-size="13" font-weight="bold">qa_plan.py feedback</text>
+<text x="280" y="1213" text-anchor="middle" fill="#7c8a9e" font-size="10">比较结果与规划 → 输出更新建议</text>
+
+<rect x="560" y="1172" width="420" height="55" rx="8" fill="#2a3a2a" stroke="#4ade80" stroke-width="1"/>
+<text x="770" y="1195" text-anchor="middle" fill="#86efac" font-size="13" font-weight="bold">qa_defect.py feedback</text>
+<text x="770" y="1213" text-anchor="middle" fill="#7c8a9e" font-size="10">不良品趋势 → 标准收紧/路径更新</text>
+
+<!-- Feedback loop back to Plan -->
+<line x1="525" y1="1245" x2="525" y2="1270" stroke="#4ade80" stroke-width="2"/>
+<line x1="525" y1="1270" x2="525" y2="1290" stroke="#4ade80" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+<rect x="350" y="1295" width="350" height="40" rx="20" fill="#065f46" stroke="#4ade80" stroke-width="1.5"/>
+<text x="525" y="1320" text-anchor="middle" fill="#86efac" font-size="13" font-weight="bold">PLAN（更新）→ 下一轮 ↻</text>
+
+<!-- Legend -->
+<rect x="40" y="1350" width="970" height="20" rx="4" fill="#1a202c" stroke="none"/>
+<rect x="60" y="1355" width="12" height="12" rx="2" fill="#3b82f6"/>
+<text x="80" y="1365" fill="#7c8a9e" font-size="9">Plan</text>
+<rect x="140" y="1355" width="12" height="12" rx="2" fill="#9ca3af"/>
+<text x="160" y="1365" fill="#7c8a9e" font-size="9">Check</text>
+<rect x="230" y="1355" width="12" height="12" rx="2" fill="#fb923c"/>
+<text x="250" y="1365" fill="#7c8a9e" font-size="9">Classify</text>
+<rect x="330" y="1355" width="12" height="12" rx="2" fill="#f87171"/>
+<text x="350" y="1365" fill="#7c8a9e" font-size="9">Gate</text>
+<rect x="410" y="1355" width="12" height="12" rx="2" fill="#a78bfa"/>
+<text x="430" y="1365" fill="#7c8a9e" font-size="9">Fix(CB)</text>
+<rect x="500" y="1355" width="12" height="12" rx="2" fill="#4ade80"/>
+<text x="520" y="1365" fill="#7c8a9e" font-size="9">Act/Feedback</text>
+<text x="700" y="1365" fill="#4ade80" font-size="9">→ 闭环: Plan ↔ Check ↔ Gate ↔ CB ↔ Feedback ↔ Plan</text>
+
+</svg>
+</body>
+</html>

@@ -1,0 +1,9 @@
+version: '2.0'
+builder: mkdocs
+steps:
+- lint
+- schema
+- dep-graph
+- breaking
+- ssg
+- deploy

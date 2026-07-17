@@ -1,0 +1,8 @@
+version: '2.0'
+code:
+  file:
+    pattern: ^[a-z][a-z0-9_]*\\.py$
+  class:
+    pattern: ^[A-Z][a-zA-Z0-9]+$
+  function:
+    pattern: ^[a-z][a-z0-9_]*$

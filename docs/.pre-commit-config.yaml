@@ -1,0 +1,74 @@
+# ──────────────────────────────────────────────
+# Pre-commit hooks
+# 安装：pip install pre-commit && pre-commit install
+# 手动运行：pre-commit run --all-files
+# ──────────────────────────────────────────────
+
+repos:
+  # ── 基础格式 ──
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        args: [--check, --diff]
+        language_version: python3.11
+
+  # ── import 排序 ──
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ── 类型检查（仅在 CI 中全量运行，本地仅检查变更文件） ──
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies:
+          - pandas-stubs
+          - numpy
+        pass_filenames: false  # 本地运行时跳过 mypy（可修改为 true）
+
+  # ── 通用检查 ──
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace     # 删除行尾空格
+      - id: end-of-file-fixer       # 文件末尾空行
+      - id: check-yaml              # YAML 语法校验
+      - id: check-toml              # TOML 语法校验
+      - id: check-added-large-files # 禁止提交大文件（默认 500KB）
+        args: [--maxkb=1024]
+      - id: check-merge-conflict     # 检查残留的合并冲突记号
+      - id: detect-private-key       # 检测是否提交了私钥
+
+  # ── 安全扫描 ──
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: [-x, tests/, -ll, -c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+
+  # ── 密钥泄露检测 ──
+  - repo: https://github.com/awslabs/git-secrets
+    rev: v1.3.0
+    hooks:
+      - id: git-secrets
+        args:
+          - --scan
+
+  # ── pandas 最佳实践检查 ──
+  - repo: https://github.com/sourcery-ai/pandas-vet
+    rev: v0.3.1
+    hooks:
+      - id: pandas-vet
+
+  # ── 绝对 import 检查（防止意外使用相对 import） ──
+  - repo: https://github.com/MarcoGorelli/absolufy-imports
+    rev: v0.3.1
+    hooks:
+      - id: absolufy-imports

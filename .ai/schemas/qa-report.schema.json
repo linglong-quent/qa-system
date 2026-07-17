@@ -1,0 +1,64 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "QA System Report Schema",
+    "description": "HealthScorer.run_all() 输出报告的校验 schema",
+    "type": "object",
+    "required": ["timestamp", "project_root", "profile", "errors", "total_issues", "blocked", "checkers"],
+    "properties": {
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "报告生成时间 (ISO 8601)"
+        },
+        "project_root": {
+            "type": "string",
+            "description": "被检查项目的根路径"
+        },
+        "profile": {
+            "type": "string",
+            "enum": ["full", "dev", "quick"],
+            "description": "当前使用的 profile"
+        },
+        "bootstrap": {
+            "type": "boolean",
+            "description": "bootstrap 模式（不阻断，仅报告）"
+        },
+        "errors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "总错误数（所有 checker 累加）"
+        },
+        "total_issues": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "总问题数（去重后）"
+        },
+        "blocked": {
+            "type": "boolean",
+            "description": "是否阻断（errors > 0 且非 bootstrap）"
+        },
+        "checkers": {
+            "type": "object",
+            "description": "各 checker 的单独结果",
+            "patternProperties": {
+                "^[a-z_]+$": {
+                    "type": "object",
+                    "required": ["label"],
+                    "properties": {
+                        "label": { "type": "string" },
+                        "errors": { "type": "integer", "minimum": 0 },
+                        "issues": { "type": "array", "items": { "type": "string" } },
+                        "skipped": { "type": "boolean" },
+                        "error": { "type": "string" }
+                    }
+                }
+            }
+        },
+        "all_issues": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "所有 checker 的问题列表（平铺）"
+        }
+    },
+    "additionalProperties": false
+}

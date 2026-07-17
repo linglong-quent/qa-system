@@ -1,0 +1,11 @@
+﻿projects:
+  linglong_github:
+    name: "量化交易系统"
+    root: "D:/Users/pc/.kun/linglong_github"
+    type: "quant-trading"
+    config: "linglong_github.yaml"
+  workspace:
+    name: "QA 系统自身"
+    root: "D:/Users/pc/.kun/qa-system"
+    type: "qa-system"
+    config: "qa-default.yaml"

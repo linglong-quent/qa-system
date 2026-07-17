@@ -1,0 +1,25 @@
+# feedback.yaml — 反馈闭环配置
+# AI 自愈反馈、人工审批反馈、CI 阻断反馈
+version: "1.0"
+last_updated: "2026-07-16"
+
+feedback_loops:
+  ci_block:
+    enabled: true
+    auto_fix: true
+    max_retries: 3
+    archive_path: "_gov/logs/5why/"
+  score_low:
+    enabled: true
+    auto_fix: true
+    threshold: 80
+  codeban:
+    enabled: true
+    auto_fix: false
+    notify: true
+
+# 反馈归档
+archive:
+  enabled: true
+  path: "_gov/logs/feedback/"
+  retention_days: 365

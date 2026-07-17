@@ -1,0 +1,10 @@
+version: '2.0'
+metrics:
+  doc_score:
+    target: 80
+    warning_sigma: 2
+    block_sigma: 3
+  ci_pass_rate:
+    target: 90
+    warning_sigma: 2
+    block_sigma: 3

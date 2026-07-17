@@ -1,0 +1,43 @@
+name: AI Document Health Scan
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '_gov/**'
+      - 'config/**'
+      - 'src/**'
+    branches: [main, develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  doc-health-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run document health scan
+        run: |
+          echo "Document health scan pipeline"
+          if [ -f "scripts/check_doc_health.py" ]; then
+            python scripts/check_doc_health.py
+          else
+            echo "scan script not found, skipping"
+            exit 0
+          fi
+      - name: Self-heal on failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "Running self-heal pipeline"
+          python scripts/ai_self_heal.py --max-retries 3 || true

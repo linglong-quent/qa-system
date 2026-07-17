@@ -1,0 +1,76 @@
+# ──────────────────────────────────────────────
+# CI: 代码质量门禁
+# 每次 Push 和 PR 时运行
+# ──────────────────────────────────────────────
+
+name: Code Quality
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.ref }}-quality
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  quality:
+    name: "代码质量检查"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # ── 第 1 关：格式化 ──
+      - name: "L1: Black 格式化检查"
+        run: black --check --diff .
+
+      # ── 第 2 关：Lint ──
+      - name: "L2: Ruff Lint"
+        run: ruff check --output-format=github .
+
+      # ── 第 3 关：类型检查 ──
+      - name: "L3: mypy 类型检查（严格模式）"
+        run: mypy --strict .
+
+      # ── 第 4 关：安全扫描 ──
+      - name: "L4: Bandit 安全扫描"
+        run: bandit -r . -x tests/,docs/ -ll
+
+      # ── 第 5 关：依赖漏洞 ──
+      - name: "L5: pip-audit 依赖漏洞"
+        run: pip-audit
+
+      # ── 第 6 关：单元测试 ──
+      - name: "L6: pytest + 覆盖率"
+        run: pytest --cov=. --cov-report=xml --cov-fail-under=80
+
+      # ── 第 7 关：复杂度报告 ──
+      - name: "L7: 代码复杂度报告（仅信息，不阻断）"
+        run: |
+          pip install radon
+          radon cc . -s -a --min C
+        continue-on-error: true
+
+      # ── 汇总 ──
+      - name: 上传覆盖率报告
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false

@@ -1,0 +1,115 @@
+# asset_reuse_map.yaml  
+#
+# :  _deprecated/ 
+# :  G5A 
+# : v1.0  P1  p1-7-migration 
+# : CB (2026-07-07 21:52)
+#
+# :
+#   source:        _deprecated/ 
+#   target:        
+#   reuse_level:    (direct/upgrade/reference)
+#   status:         (planned/in_progress/done/blocked)
+#   changes:       
+#   approved_by:   
+#   approved_at:   
+
+version: "1.0"
+updated_at: "2026-07-07T21:52"
+audit: "CB   P1  p1-7-migration"
+
+assets:
+  #   (direct) 
+  - id: M001
+    source: "_deprecated/v2026-07-07/human_feedback.py"
+    target: "_core/human_feedback.py"
+    reuse_level: direct
+    status: planned
+    size_kb: 27
+    changes: " _core/ "
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  - id: M002
+    source: "_deprecated/v2026-07-07/backup.py"
+    target: "scripts/db_backup.py"
+    reuse_level: upgrade
+    status: planned
+    size_kb: 12
+    changes: " NAS "
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  #   (upgrade) 
+  - id: M003
+    source: "_deprecated/v2026-07-07/safe_writer.py"
+    target: "_core/worm_writer.py"
+    reuse_level: upgrade
+    status: planned
+    size_kb: 2.5
+    changes: " WORM +++"
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  - id: M004
+    source: "_deprecated/v2026-07-07/watchdog.py"
+    target: "_core/monitor.py"
+    reuse_level: upgrade
+    status: planned
+    size_kb: 2
+    changes: "///"
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  - id: M005
+    source: "_deprecated/v2026-07-07/L5_signal_fusion/adversarial_review_engine.py"
+    target: "_core/adversarial_engine.py"
+    reuse_level: upgrade
+    status: planned
+    size_kb: 11
+    changes: "ASTG5A//"
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  #   (reference) 
+  - id: M006
+    source: "_deprecated/v2026-07-07/batch_fix_v2.py"
+    target: ""
+    reuse_level: reference
+    status: planned
+    size_kb: 2.6
+    changes: "scanner_engine "
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  - id: M007
+    source: "_deprecated/v2026-07-07/_version_audit.py"
+    target: ""
+    reuse_level: reference
+    status: planned
+    size_kb: 2.6
+    changes: ""
+    approved_by: KUN
+    approved_at: "2026-07-07"
+
+  #   (done) 
+  - id: M008
+    source: "_deprecated/v2026-07-07/.github/workflows/ci.yml"
+    target: ".github/workflows/ci.yml"
+    reuse_level: upgrade
+    status: done
+    size_kb: 1.5
+    changes: " P1  CI4+compile+test"
+    approved_by: KUN
+    approved_at: "2026-07-07T21:52"
+    completed_at: "2026-07-07T21:52"
+
+#   
+summary:
+  total: 8
+  done: 1
+  planned: 7
+  direct: 1
+  upgrade: 4
+  reference: 2
+  reuse_rate_pct: 100  # 

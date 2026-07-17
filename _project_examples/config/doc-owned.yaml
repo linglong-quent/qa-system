@@ -1,0 +1,173 @@
+# _gov/config/doc-owned.yaml
+#   
+# : _docs/engineering/docs-as-code-spec.md
+# : KUNPR review 
+
+version: "2.1"
+last_updated: "2026-07-15"
+
+# 
+# 1:1        CI 
+# N:1        CI 
+# generate   API 
+# mirror     YAML  MD 
+
+mappings:
+  #    KUN  
+  - id: constitution_cb_methodology
+    source: _docs/constitution/CB_METHODOLOGY.md
+    docs: linglong/_core/
+    mode: "1:1"
+    owner: "KUN"
+    sync_rule: "CB   "
+    violation: block
+    status: active
+
+  - id: constitution_system_manual
+    source: _docs/constitution/SYSTEM_MANUAL.md
+    docs: _docs/constitution/SYSTEM_SPEC.md
+    mode: "1:1"
+    owner: "KUN"
+    sync_rule: "  "
+    violation: block
+    status: active
+
+  #    CB  
+  - id: core_order_fsm
+    source: _core/order_fsm.py
+    docs: _docs/code-mirror/p0/
+    mode: "1:1"
+    owner: "CB"
+    sync_rule: "  P0 "
+    violation: block
+    status: active
+
+  - id: core_order_gateway
+    source: _core/order_gateway.py
+    docs: _docs/code-mirror/p0/
+    mode: "1:1"
+    owner: "CB"
+    sync_rule: "  P0 "
+    violation: block
+    status: active
+
+  - id: core_broker_adapter
+    source: _core/broker_adapter.py
+    docs: _docs/code-mirror/p0/
+    mode: "1:1"
+    owner: "CB"
+    sync_rule: "  P0 "
+    violation: block
+    status: active
+
+  - id: core_position_manager
+    source: _core/position_manager.py
+    docs: _docs/code-mirror/p0/
+    mode: "1:1"
+    owner: "CB"
+    sync_rule: "  P0 "
+    violation: block
+    status: active
+
+  - id: p2_handlers
+    source: _core/p2/handlers/
+    docs: _docs/code-mirror/p2/handlers/
+    mode: "N:1"
+    owner: "CB"
+    sync_rule: "P2   handler "
+    violation: warn
+    status: active
+
+  - id: p2_risk
+    source: _core/risk/
+    docs: _docs/code-mirror/p2/risk/
+    mode: "N:1"
+    owner: "CB"
+    sync_rule: "  "
+    violation: warn
+    status: active
+
+  #    KUN  
+  - id: gov_config_rules
+    source: _gov/config/
+    docs: _docs/engineering/docs-as-code-spec.md
+    mode: "N:1"
+    owner: "KUN"
+    sync_rule: "  "
+    violation: block
+    status: active
+
+  - id: gov_prompts
+    source: _gov/prompts/
+    docs: _docs/engineering/docs-as-code-spec.md
+    mode: "N:1"
+    owner: "KUN"
+    sync_rule: "Prompt   "
+    violation: warn
+    status: active
+
+  - id: ci_workflows
+    source: .github/workflows/
+    docs: _docs/reference/QUICKSTART.md
+    mode: generate
+    owner: "KUN"
+    sync_rule: "CI   "
+    violation: auto_generate
+    status: active
+
+  #    KUN  
+  - id: architecture_total
+    source: _docs/constitution/ARCHITECTURE_TOTAL.md
+    docs: _docs/architecture/
+    mode: "1:1"
+    owner: "KUN"
+    sync_rule: "  "
+    violation: warn
+    status: active
+
+  #    KUN  
+  - id: engineering_ci
+    source: .github/workflows/ci.yml
+    docs: _docs/engineering/ci-tool-chain.md
+    mode: "1:1"
+    owner: "KUN"
+    sync_rule: "CI   CI "
+    violation: warn
+    status: active
+
+  - id: engineering_review
+    source: _gov/config/review-rules.yaml
+    docs: _docs/engineering/REVIEW_WORKFLOW.md
+    mode: mirror
+    owner: "KUN"
+    sync_rule: "  "
+    violation: block
+    status: active
+
+  #   
+  - id: doc_health_check
+    source: scripts/check_doc_health.py
+    docs: _docs/engineering/docs-as-code-spec.md
+    mode: "1:1"
+    owner: "KUN"
+    sync_rule: "  "
+    violation: block
+    status: active
+
+  #    CB  
+  - id: strategy_params
+    source: strategies/
+    docs: _docs/reference/FACTOR_DEF_TEMPLATE.md
+    mode: "N:1"
+    owner: "CB"
+    sync_rule: "  "
+    violation: warn
+    status: active
+
+#   
+nodoc:
+  - "scripts/**/__pycache__/**"
+  - "tests/**"
+  - "*.pyc"
+  - "**/__pycache__/**"
+  - "data/**"

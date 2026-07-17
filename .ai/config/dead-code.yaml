@@ -1,0 +1,75 @@
+# dead-code.yaml — 死代码/孤儿代码扫描配置
+# 由 chk_deadcodechecker.py 读取
+# 参考: CWE-561 / Martin, R. C. Clean Code
+version: "1.0"
+last_updated: "2026-07-17"
+
+# ── 扫描范围 ──
+scan:
+  enabled: true
+  # 被扫描的目录
+  scan_dirs:
+    - "src/"
+    - "scripts/"
+    - "tests/"
+
+  # 入口点文件（这些文件中的引用标记为"已使用"）
+  entry_points:
+    - "main.py"
+    - "app.py"
+    - "cli.py"
+    - "scripts/check_doc_health.py"
+
+# ── 豁免列表 ──
+exempt:
+  # 豁免的符号名称
+  names:
+    - "main"
+    - "__init__"
+    - "__main__"
+    - "__version__"
+    - "__all__"
+    - "app"
+    - "application"
+    - "router"
+    - "run"
+
+  # 豁免的文件模式（glob）
+  file_patterns:
+    - "*__init__.py"
+    - "**/conftest.py"
+    - "**/setup.py"
+
+  # 豁免的装饰器（添加了这些装饰器的符号不算孤儿）
+  decorators:
+    - "click.command"
+    - "click.group"
+    - "app.route"
+    - "router.get"
+    - "router.post"
+    - "router.put"
+    - "router.delete"
+    - "typer.command"
+    - "staticmethod"
+    - "classmethod"
+    - "property"
+
+# ── 分析配置 ──
+analysis:
+  # 是否分析 __init__.py 的 re-export
+  analyze_init_re_exports: true
+  # 是否考虑装饰器标记的符号
+  respect_decorator_exemptions: true
+  # 是否检测重复定义
+  detect_duplicate_definitions: false
+
+# ── 动作配置 ──
+action:
+  # 严重级别
+  severity: "WARN"
+  # 在 CI 中是否阻断构建（WARN 级别的通常不阻断）
+  block_ci: false
+  # 在 pre-commit 中是否阻断提交
+  block_commit: false
+  # 错误消息模板
+  message_template: "[DEADCODE-001] {path} 公共符号 '{symbol}' 未被项目引用 -> 孤儿代码增加维护成本，确认无用后应删除或归档"

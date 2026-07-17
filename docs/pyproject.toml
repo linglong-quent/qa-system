@@ -1,0 +1,117 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-system"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+# 行长度匹配 Black 默认
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.format]
+# 使用 Black 风格格式化
+quote-style = "double"
+
+[tool.ruff.lint]
+# 启用全部规则 + 额外安全规则
+select = [
+    "E",    # pycodestyle 错误
+    "W",    # pycodestyle 警告
+    "F",    # pyflakes
+    "I",    # isort（import 顺序）
+    "N",    # pep8-naming（命名规范）
+    "UP",   # pyupgrade
+    "S",    # flake8-bandit（安全）
+    "B",    # flake8-bugbear（常见 bug）
+    "SIM",  # flake8-simplify（简化代码）
+    "ARG",  # flake8-unused-arguments
+    "C4",   # flake8-comprehensions（推导式）
+    "T20",  # flake8-print（禁止 print）
+    "PT",   # flake8-pytest-style
+    "RUF",  # Ruff 专属规则
+    "PERF", # 性能感知
+    "PD",   # pandas 规范
+    "SLF",  # self/cls 私有成员访问
+]
+ignore = [
+    "E501",   # 行长度交给 Black 处理
+    "SIM108", # 单行 if-else 有时更清晰
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101"]  # 测试中允许 assert
+
+[tool.ruff.lint.mccabe]
+# 圈复杂度上限
+max-complexity = 10
+
+[tool.ruff.lint.flake8-bugbear]
+# 函数最大参数数量
+max-args = 5
+# 函数最大行数
+max-lines-in-function = 50
+
+[tool.mypy]
+# 严格模式
+strict = true
+python_version = "3.11"
+
+# 显式指定哪些类型需要忽略
+explicit_any_bounds = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# pandas 插件（处理 DataFrame 类型）
+plugins = ["numpy.typing.mypy_plugin"]
+
+# 对测试放宽
+[tool.mypy."tests.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--strict-config",
+    "-W", "error",         # 警告转错误
+    "--no-header",
+]
+
+# 覆盖率配置
+[tool.coverage.run]
+source = ["data", "strategy", "execution", "api"]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+fail_under = 80
+skip_empty = true
+
+[tool.pylint]
+# pylint 作为补充，运行在 CI 中但非阻塞
+max-line-length = 88
+max-nested-blocks = 4
+max-args = 5
+max-locals = 15
+max-returns = 3
+max-branches = 12
+max-statements = 50
+min-public-methods = 1
+max-public-methods = 20

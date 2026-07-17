@@ -1,0 +1,23 @@
+# coordinator-config.yaml — P-A4 协调器配置
+# 定义多 Agent 编排、冲突仲裁、任务调度规则
+# 对应规范: docs-as-code-spec.md §16.18 Large 4 P-A4
+version: "1.0"
+last_updated: "2026-07-16"
+
+# 协调策略
+strategy: "priority_round_robin"  # priority_round_robin | weighted | fifo
+max_concurrent_agents: 4
+conflict_resolution: "priority"    # priority | timestamp | manual
+
+# Agent 优先级（数字越小优先级越高）
+agent_priorities:
+  preflight: 1
+  health_scorer: 2
+  code_ban: 3
+  doc_sync: 4
+  config_audit: 5
+  provenance: 6
+
+# 任务超时设置
+task_timeout_seconds: 120
+heartbeat_interval_seconds: 30

@@ -1,0 +1,17 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# QA runtime (generated per project, not committed)
+.ai/logs/
+.ai/defects/
+.ai/fixes/
+.ai/handoff/
+
+# OS
+.DS_Store
+Thumbs.db

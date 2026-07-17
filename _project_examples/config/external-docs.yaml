@@ -1,0 +1,5 @@
+version: '2.0'
+sources:
+- name: ISO 25010
+  url: https://iso25000.com/
+  review_cycle: 年度

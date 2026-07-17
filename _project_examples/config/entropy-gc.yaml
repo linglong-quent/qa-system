@@ -1,0 +1,24 @@
+# entropy-gc.yaml — P-A3 熵清理配置
+# 清理旧文件、临时产物、重复文件
+# 对应规范: docs-as-code-spec.md §16.15 + §16.17
+version: "1.0"
+last_updated: "2026-07-16"
+
+# 清理策略
+gc_strategy: "age_based"  # age_based | size_based | hybrid
+retention_days:
+  temp_files: 7
+  backup_files: 90
+  archived_assets: 365
+  deprecated_code: 30
+
+# 熵阈值
+max_entropy_score: 0.7  # 超过此值触发清理
+max_duplicate_ratio: 0.15  # 重复文件占比超过此值触发去重
+
+# 免清理目录
+exempt_dirs:
+  - ".git"
+  - ".venv_linglong"
+  - "_gov/logs"
+  - "_gov/config"

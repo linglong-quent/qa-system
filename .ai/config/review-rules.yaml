@@ -1,0 +1,340 @@
+version: '3.0'
+last_updated: '2026-07-17'
+bootstrap_mode: false
+default_profile: full
+iso_25010_scoring:
+  enabled: true
+  total_max: 80
+  red_line_total: 40
+  dimensions:
+  - id: ISO-FUNC
+    name: 功能合适性
+    weight: 1.0
+    checkers:
+    - lookahead_check
+    - deadcode_check
+  - id: ISO-PERF
+    name: 性能效率
+    weight: 1.0
+    checkers:
+    - code_ban
+  - id: ISO-COMPAT
+    name: 兼容性
+    weight: 1.0
+    checkers:
+    - code_ban
+  - id: ISO-USABILITY
+    name: 易用性
+    weight: 1.0
+    checkers:
+    - inplace_check
+  - id: ISO-RELIABILITY
+    name: 可靠性
+    weight: 1.5
+    checkers:
+    - lookahead_check
+    - code_ban
+  - id: ISO-SECURITY
+    name: 安全性
+    weight: 1.5
+    checkers:
+    - secret_check
+    - code_ban
+  - id: ISO-MAINTAIN
+    name: 可维护性
+    weight: 1.0
+    checkers:
+    - deadcode_check
+    - cyclic_check
+  - id: ISO-PORTABLE
+    name: 可移植性
+    weight: 0.5
+    checkers:
+    - meta_quality
+nasa_power_of_10_scoring:
+  enabled: true
+  total_max: 100
+  red_line_total: 60
+  rules:
+  - id: NASA-1
+    enabled: true
+    weight: 0.1
+  - id: NASA-2
+    enabled: true
+    weight: 0.1
+  - id: NASA-3
+    enabled: true
+    weight: 0.1
+  - id: NASA-4
+    enabled: true
+    weight: 0.1
+  - id: NASA-5
+    enabled: true
+    weight: 0.1
+  - id: NASA-6
+    enabled: true
+    weight: 0.1
+  - id: NASA-7
+    enabled: true
+    weight: 0.1
+  - id: NASA-8
+    enabled: true
+    weight: 0.1
+  - id: NASA-9
+    enabled: true
+    weight: 0.1
+  - id: NASA-10
+    enabled: true
+    weight: 0.1
+iso_checker_weights:
+  code_ban_check: 0.2
+  secret_check: 0.25
+  deadcode_check: 0.15
+  cyclic_check: 0.15
+  inplace_check: 0.1
+  lookahead_check: 0.15
+plugins:
+  enabled: true
+  default_plugin_enabled: true
+  enabled_plugins:
+    plugin_quantspec_iterrows_checker: true
+    plugin_quantspec_magic_number_checker: true
+  plugin_configs:
+    plugin_quantspec_iterrows_checker:
+      scan_dirs:
+      - src/
+      - strategies/
+      - backtest/
+    plugin_quantspec_magic_number_checker:
+      scan_dirs:
+      - src/
+      - strategies/
+profiles:
+  full:
+    description: 全量检查（生产标准）
+    checkers_on:
+    - inplace_check
+    - lookahead_check
+    - secret_check
+    - deadcode_check
+    - cyclic_check
+    - code_ban
+    - import_boundary
+    - config_audit
+    - quality_gates
+    - claude_validation
+    - production
+    - codestyle
+    - governance
+    - securityplus
+    - documentation
+    - zeroprint
+    - customrules
+    - fusedetect
+    - docconsistency
+  dev:
+    description: 开发模式
+    checkers_on:
+    - inplace_check
+    - lookahead_check
+    - secret_check
+  quick:
+    description: 快速检查
+    checkers_on:
+    - secret_check
+    - lookahead_check
+scoring:
+  total_max: 100
+  red_lines:
+  - id: RL-ERRORS
+    field: errors
+    operator: '>'
+    value: 0
+    message: 存在阻断级错误
+    severity: BLOCKER
+quality_gates:
+  enabled: true
+  severity: WARN
+claude_validation:
+  enabled: true
+  severity: WARN
+config_audit_check:
+  enabled: true
+  severity: WARN
+inplace_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: WARN
+lookahead_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: BLOCKER
+secret_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: BLOCKER
+deadcode_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: WARN
+  exempt_names:
+  - main
+  - __init__
+  - __main__
+  - __version__
+  - __all__
+  - app
+  entry_points:
+  - main.py
+  - app.py
+  - cli.py
+cyclic_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: BLOCKER
+code_ban_check:
+  enabled: true
+  scan_dirs:
+  - src/
+  severity: BLOCKER
+  ban_rules:
+    bare_print: true
+    sql_injection: true
+    except_pass: true
+    hardcoded_path: true
+    magic_number: true
+import_boundary_check:
+  enabled: true
+  severity: BLOCKER
+  restricted_dirs:
+  - src/_core/
+  forbidden_prefixes:
+  - tests
+  - scripts
+  - tools
+  - archive
+  allowed_modules:
+  - numpy
+  - pandas
+  - requests
+  max_depth: 3
+metrics:
+  enabled: true
+  tracked_issues:
+  - metric: inplace_count
+    source: inplace_check
+  - metric: lookahead_count
+    source: lookahead_check
+  - metric: secret_count
+    source: secret_check
+  - metric: deadcode_count
+    source: deadcode_check
+  - metric: cyclic_count
+    source: cyclic_check
+meta_quality:
+  enabled: true
+  tool_version_pinning:
+    enabled: true
+    config_files:
+    - .pre-commit-config.yaml
+    pinned_versions:
+      black: 24.4.2
+      isort: 5.13.2
+      flake8: 7.1.0
+      mypy: 1.10.0
+  exclude_consistency:
+    enabled: true
+    config_files:
+    - .pre-commit-config.yaml
+    required_excludes:
+    - _deprecated
+    - archive
+  workflow_quality:
+    enabled: true
+    scan_dir: .github/workflows/
+    checks:
+      yaml_syntax: true
+      encoding_utf8: true
+      no_mojibake: true
+  encoding_check:
+    enabled: true
+    scan_dirs:
+    - .ai/config/
+    - .github/workflows/
+    expected_encoding: utf-8
+production_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+  - scripts/
+  active_checks:
+  - PROD-01
+  - PROD-02
+  - PROD-03
+  - PROD-04
+  - PROD-07
+  - PROD-08
+  - PROD-09
+  - PROD-10
+codestyle_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+governance_check:
+  enabled: true
+  severity: WARN
+  expected_dirs:
+  - src/
+  - tests/
+  - docs/
+  - scripts/
+securityplus_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+documentation_check:
+  enabled: true
+  severity: WARN
+  docs_dir: docs/
+zeroprint_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+  banned_modules:
+  - core
+  - engine
+  - api
+customrules_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+  rules:
+  - name: 裸 except
+    pattern: '^\s*except\s*:'
+    severity: BLOCKER
+fusedetect_check:
+  enabled: true
+  severity: WARN
+  scan_dirs:
+  - src/
+  triggers:
+  - requests
+  - urllib
+  - socket
+docconsistency_check:
+  enabled: true
+  severity: WARN
+  code_dirs:
+  - src/
+  doc_dirs:
+  - docs/

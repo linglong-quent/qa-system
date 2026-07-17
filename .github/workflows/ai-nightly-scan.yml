@@ -1,0 +1,90 @@
+name: QA Nightly — Full Pipeline Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema
+
+      # =============================================
+      # P0: Self-test
+      # =============================================
+      - name: P0 — QA 系统自检
+        id: self_test
+        run: python scripts/qa_self_test.py
+        continue-on-error: true
+
+      # =============================================
+      # P1: Full QA
+      # =============================================
+      - name: P1 — 全量检查
+        id: qa_check
+        run: python scripts/qa_check.py health
+        continue-on-error: true
+
+      # =============================================
+      # P2: Classify
+      # =============================================
+      - name: P2 — 问题分类
+        id: classify
+        run: python scripts/qa_classify.py
+        continue-on-error: true
+
+      # =============================================
+      # P3: Feedback
+      # =============================================
+      - name: P3 — 反馈回路
+        id: feedback
+        run: python scripts/qa_plan.py feedback
+        continue-on-error: true
+
+      # =============================================
+      # P4: Gate
+      # =============================================
+      - name: P4 — 总闸门
+        id: final_gate
+        run: python scripts/qa_gate.py
+
+      # =============================================
+      # Archive
+      # =============================================
+      - name: Archive QA Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-nightly-$(date +%Y%m%d)
+          path: |
+            .ai/logs/qa-report.json
+            .ai/fixes/pending.json
+            .ai/logs/*.json
+          retention-days: 90
+
+      - name: Nightly Summary
+        if: always()
+        run: |
+          echo "=============================="
+          echo "QA Nightly Scan — Complete"
+          echo "=============================="
+          if [ -f .ai/logs/qa-report.json ]; then
+            ERRORS=$(python -c "import json; r=json.load(open('.ai/logs/qa-report.json')); print(r['errors'])")
+            echo "Total errors: $ERRORS"
+          fi
+          echo "Artifacts retained for 90 days"
