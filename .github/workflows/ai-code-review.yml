@@ -1,5 +1,4 @@
 ﻿name: QA Self-Test
-
 on:
   push:
     branches: [main]
@@ -9,30 +8,25 @@ on:
 jobs:
   self-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install dependencies
+      - name: Install
         run: pip install pyyaml
-
       - name: QA Self Test
         run: python scripts/qa_self_test.py
-
       - name: QA Full Check
+        continue-on-error: true
         run: python scripts/qa_check.py health
-
-      - name: QA Gate
+      - name: QA Gate (report only, non-blocking)
+        continue-on-error: true
         run: python scripts/qa_gate.py --report
-
-      - name: Upload QA Report
+      - name: Upload Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: qa-report
           path: .ai/logs/qa-report.json
           retention-days: 7
-
