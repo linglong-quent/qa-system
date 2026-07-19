@@ -1,0 +1,56 @@
+# deployment-gates.yaml — 部署门禁配置（Gate8）
+# 框架手册：灰度/蓝绿部署门禁，过渡期人工确认
+version: '4.0'
+last_updated: '2026-07-20'
+deployment:
+  enabled: true
+  strategy: "manual_approval"  # 过渡期：人工确认
+  target_strategy: "blue_green"  # 目标：蓝绿部署
+environments:
+  dev:
+    gate_required: false
+    auto_deploy: true
+  test:
+    gate_required: true
+    auto_deploy: false
+    require_gates:
+      - "Gate3"
+      - "Gate5"
+  staging:
+    gate_required: true
+    auto_deploy: false
+    require_gates:
+      - "Gate3"
+      - "Gate5"
+      - "Gate6"
+  production:
+    gate_required: true
+    auto_deploy: false
+    require_gates:
+      - "Gate0"
+      - "Gate3"
+      - "Gate5"
+      - "Gate6"
+      - "Gate8"
+      - "Gate9"
+    manual_approval: true
+    notify: "金哥"
+checks:
+  pre_deploy:
+    - "qa_gate.py 全部门禁通过"
+    - "backtest 3年全量通过"
+    - "QMT 仿真灰度1天"
+    - "人工确认"
+  post_deploy:
+    - "进程存活探针"
+    - "日志无异常"
+    - "仓位一致"
+rollback:
+  strategy: "git_revert"
+  auto_on_failure: true
+  max_rollback_time_minutes: 5
+release_rhythm:
+  linglong_sys: "日级(盘后)"
+  qa_sys: "周级"
+  ops_sys: "按需"
+  evolution_sys: "周级(盘后)"

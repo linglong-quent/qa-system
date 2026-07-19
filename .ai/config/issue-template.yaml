@@ -1,0 +1,40 @@
+# issue-template.yaml — Issue 模板规范（Gate0）
+# 框架手册：Gate0(需求)过渡期手动创建，后续自动化
+version: '4.0'
+last_updated: '2026-07-20'
+templates:
+  feature_request:
+    required_sections:
+      - "需求描述"
+      - "验收标准"
+      - "关联文档"
+      - "影响范围"
+    optional_sections:
+      - "回测要求"
+      - "灰度要求"
+  bug_report:
+    required_sections:
+      - "问题描述"
+      - "复现步骤"
+      - "期望行为"
+      - "实际行为"
+      - "环境信息"
+    optional_sections:
+      - "日志/截图"
+      - "影响范围"
+  architecture_change:
+    required_sections:
+      - "变更描述"
+      - "ADR 链接"
+      - "受影响模块"
+      - "回滚方案"
+validation:
+  enabled: true
+  rules:
+    - "必须选择类型 (feature/bug/architecture)"
+    - "必须包含关联文档路径"
+    - "必须指定优先级 (P0/P1/P2/P3)"
+transition_rules:
+  gate0_ready: false  # Gate0 尚在规划中
+  manual_only: true   # 过渡期：禁止 AI 自动生成 Issue
+  manual_by: "金哥"

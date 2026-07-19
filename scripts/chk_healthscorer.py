@@ -46,8 +46,6 @@ class HealthScorer:
                  qa_system_root: str = "", project_name: str = ""):
         self.project_root = os.path.abspath(project_root)
         self.qa_system_root = qa_system_root or os.environ.get("QA_SYSTEM_ROOT", "")
-        self._cache = {}
-        self._use_cache = os.environ.get("QA_USE_CACHE", "") == "1"
         self.project_name = project_name or os.environ.get("QA_PROJECT_NAME", "")
 
         # 0-污染模式：配置在 QA 系统中，不在项目里
@@ -203,38 +201,42 @@ class HealthScorer:
         return self._enabled.get(cid, True)
 
     def run_all(self) -> dict:
-        """运行所有 checker (A + B) - 带并行加速"""
-        import concurrent.futures
+        """运行所有 checker (A + B)，返回统一报告"""
         all_issues: List[str] = []
         total_errors = 0
         checker_results = {}
 
-        def _run_one(cid, instance, label):
+        for cid, instance, label in self._checkers:
             if not self._is_enabled(cid):
-                return cid, {"skipped": True, "label": label}, 0, []
+                checker_results[cid] = {"skipped": True, "label": label}
+                continue
+
+            # Layer B 插件: dict config + function check()
             if isinstance(instance, dict):
                 try:
                     mod = self._resolve_plugin_mod(cid)
                     if mod is None or not hasattr(mod, "check"):
-                        return cid, {"label": label, "error": "模块不可用"}, 0, []
-                    errs, iss = mod.check(instance, self.project_root)
-                    return cid, {"label": label, "errors": errs, "issues": iss or []}, errs, iss or []
+                        checker_results[cid] = {"label": label, "error": "模块不可用"}
+                        continue
+                    errors, issues = mod.check(instance, self.project_root)
+                    checker_results[cid] = {"label": label, "errors": errors, "issues": issues or []}
+                    total_errors += errors
+                    all_issues.extend(issues or [])
                 except Exception as e:
-                    return cid, {"label": label, "error": str(e)}, 1, [str(e)]
-            try:
-                errs, iss = instance.check()
-                return cid, {"label": label, "errors": errs, "issues": iss or []}, errs, iss or []
-            except Exception as e:
-                return cid, {"label": label, "error": str(e)}, 1, [str(e)]
+                    checker_results[cid] = {"label": label, "error": str(e)}
+                    total_errors += 1
+                continue
 
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(_run_one, cid, inst, lbl) for cid, inst, lbl in self._checkers]
-            for future in concurrent.futures.as_completed(futures):
-                cid, cdata, errs, iss = future.result()
-                checker_results[cid] = cdata
-                total_errors += errs
-                all_issues.extend(iss)
+            # Layer A 内置 checker
+            try:
+                errors, issues = instance.check()
+                checker_results[cid] = {"label": label, "errors": errors, "issues": issues or []}
+                total_errors += errors
+                all_issues.extend(issues or [])
+            except Exception as e:
+                checker_results[cid] = {"label": label, "error": str(e)}
+                total_errors += 1
+                all_issues.append(f"[{cid}] 异常: {e}")
 
         return {
             "timestamp": datetime.now().isoformat(),
@@ -281,10 +283,6 @@ class HealthScorer:
     @property
     def is_production(self) -> bool:
         return self._detect_environment() == "production"
-
-    def invalidate_cache(self):
-        """清空缓存"""
-        self._cache = {}
 
     def save_report(self, report: dict) -> str:
         """保存报告（0-污染模式 → QA 系统目录）"""

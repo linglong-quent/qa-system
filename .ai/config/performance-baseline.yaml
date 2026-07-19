@@ -1,0 +1,46 @@
+# performance-baseline.yaml — 性能基线配置
+# 框架手册：量化交易系统延迟/吞吐量标准
+version: '4.0'
+last_updated: '2026-07-20'
+latency_budgets:
+  data_pipeline:
+    market_data_fetch_ms: 500
+    factor_compute_ms: 200
+    signal_generate_ms: 300
+    total_ms: 1000
+  order_execution:
+    risk_check_ms: 100
+    order_send_ms: 50
+    confirmation_ms: 200
+    total_ms: 350
+resource_limits:
+  cpu:
+    max_pct_per_process: 60
+    max_pct_total: 80
+  memory:
+    max_mb_per_process: 1024
+    max_mb_total: 4096
+  disk:
+    log_max_gb: 10
+    data_max_gb: 50
+    archive_max_gb: 100
+  network:
+    max_requests_per_minute: 100
+    max_concurrent_connections: 10
+optimization_targets:
+  data_fetch:
+    target_ms: 200
+    warn_ms: 500
+    critical_ms: 1000
+  factor_compute:
+    target_ms: 100
+    warn_ms: 300
+    critical_ms: 500
+  signal_arbitration:
+    target_ms: 50
+    warn_ms: 150
+    critical_ms: 300
+profiling:
+  enabled: true
+  log_dir: "logs/profiling/"
+  auto_profile_on_warn: true

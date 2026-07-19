@@ -1,0 +1,40 @@
+# worm-policy.yaml — WORM 归档策略（Gate4）
+# 框架手册：Write-Once-Read-Many，Append-Only，哈希链验证
+version: '4.0'
+last_updated: '2026-07-20'
+worm:
+  enabled: true
+  principle: "Write Once, Read Many — Append-Only，不可覆写"
+  scope:
+    directories:
+      - "docs/"
+      - ".ai/logs/"
+      - ".ai/defects/"
+    file_types:
+      - ".md"
+      - ".json"
+      - ".yaml"
+      - ".log"
+  rules:
+    - "docs/ 目录只允许 .md 文件"
+    - "禁止覆写已归档的报告"
+    - "禁止删除已归档的缺陷记录"
+    - "每条记录包含时间戳和来源"
+  audit:
+    enabled: true
+    hash_chain: true
+    verification_frequency: "每日"
+    output: "docs/reports/worm-audit-chain.md"
+  enforcement:
+    severity: "BLOCKER"
+    gate: "Gate4"
+  exceptions:
+    - path: "docs/tmp/"
+      description: "临时文档区，定期清理"
+      auto_clean_days: 30
+archiving:
+  enabled: true
+  strategy: "timestamped"
+  naming: "{type}_{date}_{version}.{ext}"
+  retention_days: 365
+  compression: false  # 明文存储，便于审计

@@ -1,0 +1,57 @@
+# framework-self-audit.yaml — 框架手册自审配置（Gate3.1）
+# 框架手册：权重检查·概念分布·来源标注·精华保留
+version: '4.0'
+last_updated: '2026-07-20'
+self_audit:
+  enabled: true
+  severity: "WARN"
+  manual_path: ""  # 留空自动发现
+  checks:
+    weight_sum:
+      enabled: true
+      expected_total: 100.0
+      tolerance: 0.5
+      description: "权重和应为 100%"
+    concept_coverage:
+      enabled: true
+      expected_concepts:
+        - "人机共治"
+        - "五系统"
+        - "六条流"
+        - "七库"
+        - "Gate"
+        - "宪法"
+        - "SchemaValidator"
+        - "QA-SYS"
+        - "LINGLONG-SYS"
+        - "OPS-SYS"
+        - "ACCESS-SYS"
+        - "EVOLUTION-SYS"
+        - "BACKTEST-SYS"
+        - "PDCA"
+        - "双模"
+        - "零污染"
+      min_coverage_pct: 80
+    source_traceability:
+      enabled: true
+      min_refs_per_100lines: 2.0
+      description: "来源标注覆盖率"
+    version_check:
+      enabled: true
+      pattern: "v\\d+\\.\\d+"
+      description: "版本号存在性"
+    section_completeness:
+      enabled: true
+      required_sections:
+        - "人机共治宪法"
+        - "QA-SYS"
+        - "Gate0"
+        - "Gate1"
+        - "Gate2"
+        - "Gate3"
+        - "Gate4"
+        - "Gate5"
+        - "Gate6"
+        - "Gate7"
+        - "Gate8"
+        - "Gate9"

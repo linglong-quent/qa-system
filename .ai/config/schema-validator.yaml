@@ -1,0 +1,44 @@
+# schema-validator.yaml — SchemaValidator 配置（Gate3）
+# 框架手册宪法四：文档参数 ↔ 代码常量自动比对
+version: '4.0'
+last_updated: '2026-07-20'
+validator:
+  enabled: true
+  severity: "BLOCKER"  # 不一致直接阻断
+  tolerance: 0.001  # 浮点容差
+  doc_patterns:
+    - type: "markdown_table"
+      description: "Markdown 表格中的数值列"
+      enabled: true
+    - type: "yaml_value"
+      description: "YAML 冒号后的数值"
+      enabled: true
+    - type: "chinese_param"
+      description: "中文描述中的阈值/系数/上限"
+      enabled: true
+  code_patterns:
+    - type: "uppercase_constant"
+      description: "大写常量 PI=3.14"
+      enabled: true
+    - type: "config_dict"
+      description: "配置字典中的数值"
+      enabled: true
+    - type: "self_param"
+      description: "self.xxx = 数值 模式"
+      enabled: true
+  scan:
+    doc_dirs:
+      - "docs/"
+    code_dirs:
+      - "src/"
+      - "scripts/"
+      - "domain/"
+    exclude_dirs:
+      - "__pycache__"
+      - ".venv"
+      - "venv"
+      - "node_modules"
+      - ".git"
+  report:
+    output: "docs/reports/schema-validator-report.md"
+    max_issues: 50

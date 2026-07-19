@@ -1,0 +1,78 @@
+# security-baseline.yaml — 安全基线配置
+# 框架手册：OWASP 应用安全 + NASA Power of 10
+version: '4.0'
+last_updated: '2026-07-20'
+owasp:
+  enabled: true
+  top_10:
+    - id: "A01"
+      name: "访问控制失效"
+      checker: "import_boundary"
+    - id: "A02"
+      name: "加密失效"
+      checker: "secret_check"
+    - id: "A03"
+      name: "注入"
+      checker: "code_ban"
+    - id: "A06"
+      name: "易受攻击的组件"
+      checker: "meta_quality"
+    - id: "A07"
+      name: "身份验证失效"
+      checker: "production"
+    - id: "A09"
+      name: "安全日志与监控失效"
+      checker: "production"
+nasa_power_of_10:
+  enabled: true
+  rules:
+    - id: "NASA-1"
+      desc: "避免复杂流控制"
+      checker: "codestyle"
+    - id: "NASA-2"
+      desc: "循环上限"
+      checker: "code_ban"
+    - id: "NASA-3"
+      desc: "初始化后只读"
+      checker: "code_ban"
+    - id: "NASA-4"
+      desc: "函数单一职责"
+      checker: "codestyle"
+    - id: "NASA-5"
+      desc: "函数代码行数 ≤60"
+      checker: "codestyle"
+    - id: "NASA-6"
+      desc: "最少断言"
+      checker: "documentation"
+    - id: "NASA-7"
+      desc: "数据警戒区"
+      checker: "production"
+    - id: "NASA-8"
+      desc: "异常处理"
+      checker: "code_ban"
+    - id: "NASA-9"
+      desc: "指针/引用安全"
+      checker: "code_ban"
+    - id: "NASA-10"
+      desc: "预处理器/编译"
+      checker: "config_audit"
+secret_scan:
+  enabled: true
+  patterns:
+    api_key: "([Aa]pi[_-]?[Kk]ey|[Aa]ccess[_-]?[Tt]oken)\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-]{16,}"
+    password: "(password|passwd|pwd)\\s*[:=]\\s*['\"][^'\"]+['\"]"
+    private_key: "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    token: "token\\s*[:=]\\s*['\"][A-Za-z0-9_\\-]{20,}['\"]"
+  exclude_patterns:
+    - "test_"
+    - "_test"
+    - "example"
+    - "mock"
+    - "fixture"
+network_security:
+  enabled: true
+  rules:
+    - "禁止硬编码 IP 地址 (BLOCKER)"
+    - "禁止 socket 直接连接 (WARN)"
+    - "HTTP 请求必须配置超时 (BLOCKER)"
+    - "API 端点必须使用 HTTPS (BLOCKER)"

@@ -1,0 +1,61 @@
+# nfr-baseline.yaml — 非功能性需求基线
+# 框架手册：ISO 25010 质量模型 + NASA Power of 10 底线
+version: '4.0'
+last_updated: '2026-07-20'
+performance:
+  enabled: true
+  latency:
+    p0_order_execution_ms: 50
+    p1_signal_generation_ms: 200
+    p2_risk_check_ms: 100
+    data_refresh_interval_s: 3
+  throughput:
+    max_concurrent_orders: 100
+    max_watchlist_stocks: 500
+  resource:
+    max_memory_mb: 2048
+    max_cpu_pct: 70
+    max_disk_gb: 50
+security:
+  enabled: true
+  secrets:
+    - "API_KEY"
+    - "ACCESS_TOKEN"
+    - "PRIVATE_KEY"
+    - "PASSWORD"
+    - "SECRET"
+  rules:
+    - "禁止硬编码密钥 (BLOCKER)"
+    - "禁止 eval/exec (BLOCKER)"
+    - "禁止裸 except (BLOCKER)"
+    - "SQL 注入防护 (BLOCKER)"
+    - "日志不泄露敏感信息 (WARN)"
+  encryption:
+    config_files: true
+    network_traffic: true
+    disk_storage: false  # SQLite 文件级加密规划中
+reliability:
+  enabled: true
+  uptime_target_pct: 99.9
+  failover:
+    data_source: "主→备→兜底 三源降级"
+    network: "重试3次·指数退避"
+  recovery:
+    rto_seconds: 30
+    rpo_minutes: 5
+  circuit_breaker:
+    consecutive_failures: 5
+    reset_timeout_s: 60
+maintainability:
+  enabled: true
+  max_function_length_lines: 100
+  max_class_length_lines: 500
+  max_complexity: 10
+  comment_coverage_pct: 20
+  python_version: ">=3.9"
+portability:
+  enabled: true
+  platforms:
+    - "Windows 10/11"
+    - "Linux (CI runner)"
+  dependencies_pinned: true

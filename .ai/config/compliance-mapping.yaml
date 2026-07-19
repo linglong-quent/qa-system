@@ -1,0 +1,68 @@
+# compliance-mapping.yaml — 合规标准映射（Gate9）
+# 框架手册：ISO 27001/SOX/SOC2/SLSA 对齐
+version: '4.0'
+last_updated: '2026-07-20'
+standards:
+  iso_25010:
+    enabled: true
+    description: "ISO/IEC 25010 质量模型"
+    mappings:
+      - gate: "Gate3"
+        controls: ["功能合适性", "性能效率"]
+      - gate: "Gate5"
+        controls: ["可靠性", "安全性", "可维护性", "可移植性"]
+      - gate: "Gate9"
+        controls: ["兼容性", "易用性"]
+  nasa_power_of_10:
+    enabled: true
+    description: "NASA 安全编码十大规则"
+    checker: "code_ban"
+    mapping_file: "security-baseline.yaml"
+  owasp:
+    enabled: true
+    description: "OWASP Top 10 应用安全"
+    checker: "securityplus_check"
+    mapping_file: "security-baseline.yaml"
+  cmmi:
+    enabled: true
+    description: "CMMI 过程改进"
+    mappings:
+      - gate: "Gate0"
+        cmmi_level: 2
+        process: "需求管理"
+      - gate: "Gate4"
+        cmmi_level: 2
+        process: "配置管理"
+      - gate: "Gate5"
+        cmmi_level: 3
+        process: "质量保证"
+      - gate: "Gate7"
+        cmmi_level: 3
+        process: "过程监控"
+      - gate: "Gate9"
+        cmmi_level: 4
+        process: "量化管理"
+  slsa:
+    enabled: true
+    level: 2
+    target_level: 3
+    description: "供应链安全等级"
+    requirements:
+      - "CI 工作流只引用不内嵌 QA 逻辑"
+      - "依赖版本锁定"
+      - "构建可重现"
+  sox:
+    enabled: true
+    description: "萨班斯-奥克斯利合规"
+    controls:
+      - "职责分离 (KUN/CB/金哥三角)"
+      - "变更审计追踪"
+      - "WORM 不可篡改归档"
+      - "CI/CD 门禁审批链"
+audit_trail:
+  enabled: true
+  retention_days: 2555  # 7年 (SOX 要求)
+  stores:
+    - "WORM 归档"
+    - "Git 历史"
+    - "QA 报告"
