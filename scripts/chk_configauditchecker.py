@@ -102,8 +102,17 @@ class ConfigAuditChecker:
         if not os.path.isdir(self.config_dir):
             return 0, []
         expected = {
+            # v3.0 存量
             "review-rules.yaml", "secrets-scan.yaml", "dead-code.yaml",
             "ai-pipeline.yaml", "ai-whitelist.yaml", "arch-review.yaml",
+            # v4.0 新增（21 张规则表）
+            "quality-plan.yaml", "nfr-baseline.yaml",
+            "deployment-gates.yaml", "issue-template.yaml", "retro-gates.yaml",
+            "schema-validator.yaml", "framework-self-audit.yaml",
+            "codeowner-rules.yaml", "security-baseline.yaml",
+            "performance-baseline.yaml", "test-coverage.yaml",
+            "change-management.yaml", "worm-policy.yaml",
+            "agent-boundary.yaml", "compliance-mapping.yaml",
         }
         errors = 0
         issues = []
