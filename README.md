@@ -11,7 +11,7 @@
 │  Gate1  Position            — 文档位置校验    (自动化)    │
 │  Gate2  Naming              — 文档命名校验    (自动化)    │
 │  Gate3  Sync                — SchemaValidator + 目录     │
-│  Gate3.1 Framework Self-Audit— 框架手册自审   (新增)     │
+│  Gate3.1 Framework Self-Audit— 框架手册自审   (权重错阻断) │
 │  Gate4  Version & WORM      — Git 哈希 + Append-Only    │
 │  Gate5  Scoring & Checkers  — 19 检测器 + 评分          │
 │  Gate6  Permission          — CODEOWNERS + 权限边界     │
@@ -37,8 +37,11 @@ python scripts/qa_gate.py
 python scripts/qa_gate.py --gate=3     # SchemaValidator
 python scripts/qa_gate.py --gate=3.1   # 框架手册自审
 
-# 一键接入新项目
-python scripts/qa_setup.py --project /path/to/project --with-checkers --local-windows
+# 一键接入新项目（仅生成 .pre-commit-config.yaml 引用，不复制 QA 代码）
+python scripts/qa_setup.py --project /path/to/project --local-windows
+
+# 设置环境变量（替代硬编码路径）
+set QA_SYSTEM_ROOT=E:\WB\QA-System
 ```
 
 ## 使用（CI 引用）
@@ -81,9 +84,9 @@ python scripts/qa_setup.py --project /path/to/project --with-checkers --local-wi
 
 | 能力 | 说明 |
 |------|------|
-| 19 个内置 Checker | 安全/架构/量化/代码质量/文档/治理一体 |
+| 19 个内置 Checker | 消费 21 张 YAML 规则表的配置，执行静态分析与合规检查 |
 | SchemaValidator | 文档参数 ↔ 代码常量自动比对 (宪法四) |
-| Gate3.1 框架自审 | 权重/概念/来源/版本完整性检查 |
+| Gate3.1 框架自审 | 权重/概念/来源/版本完整性检查（权重错误→BLOCKER） |
 | 4 级干预 | BLOCKER / WARN / INFO / PASS |
 | 3 层 Checker 架构 | 内置通用 + 项目插件 + CI/CD 集成 |
 | 双模运行 | 本地 pre-commit / CI git clone / 生产跳过 |

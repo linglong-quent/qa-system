@@ -197,16 +197,22 @@ class SchemaValidator:
 # ── Gate3.1 框架手册自审 ──────────────────────────────────────
 
 class FrameworkSelfAudit:
-    """Gate3.1 框架手册自审 — 检查权重、概念分布、来源标注、精华保留"""
+    """Gate3.1 框架手册自审 — 检查权重、概念分布、来源标注、精华保留
+
+    返回列表，每项为 (severity, message) 元组。
+    severity: 'BLOCKER' | 'WARN' | 'INFO'
+        BLOCKER — 逻辑错误（如权重和≠100%），应阻断PR
+        WARN    — 潜在质量问题（如缺少章节），需人工关注
+        INFO    — 建议性提示
+    """
 
     def __init__(self, project_root: str):
         self.project_root = project_root
-        self.issues: List[str] = []
+        self.issues: List[Tuple[str, str]] = []
 
-    def run(self, manual_path: str = "") -> List[str]:
-        """执行全部自审检查"""
+    def run(self, manual_path: str = "") -> List[Tuple[str, str]]:
+        """执行全部自审检查，返回 (severity, message) 列表"""
         if not manual_path:
-            # 自动发现
             for candidate in ["框架手册.md", "docs/框架手册.md",
                               "README.md", "docs/README.md"]:
                 fp = os.path.join(self.project_root, candidate)
@@ -215,20 +221,20 @@ class FrameworkSelfAudit:
                     break
 
         if not os.path.exists(manual_path):
-            return ["[Gate3.1] 未找到框架手册文件，跳过自审"]
+            return [("INFO", "[Gate3.1] 未找到框架手册文件，跳过自审")]
 
         self.issues = []
         try:
             text = open(manual_path, "r", encoding="utf-8").read()
         except Exception as e:
-            return [f"[Gate3.1] 读取框架手册失败: {e}"]
+            return [("WARN", f"[Gate3.1] 读取框架手册失败: {e}")]
 
         lines = text.split('\n')
         rel_path = os.path.relpath(manual_path, self.project_root)
 
-        # ── 1. 权重检查（权重之和应为 100%） ──
+        # ── 1. 权重检查（BLOCKER: 逻辑错误） ──
         weight_pattern = re.compile(
-            r'(?:趋势|形态|量价|资金|情绪|题材|筹码|大盘|板块|个股|因子)'  # 可能的维度名
+            r'(?:趋势|形态|量价|资金|情绪|题材|筹码|大盘|板块|个股|因子)'
             r'\s*(\d+(?:\.\d+)?)\s*%'
         )
         weights = weight_pattern.findall(text)
@@ -236,57 +242,52 @@ class FrameworkSelfAudit:
             total = sum(float(w) for w in weights)
             if abs(total - 100.0) > 0.5 and abs(total - 1.0) > 0.01:
                 self.issues.append(
-                    f"[Gate3.1] 权重和={total:.1f}% ≠ 100% — {rel_path}"
+                    ("BLOCKER", f"[Gate3.1] 权重和={total:.1f}% ≠ 100% — {rel_path}")
                 )
 
-        # ── 2. 概念分布检查 ──
+        # ── 2. 概念分布检查（WARN: 文档可能不完整） ──
         expected_concepts = [
             "人机共治", "五系统", "六条流", "七库", "Gate",
             "宪法", "SchemaValidator", "QA-SYS", "LINGLONG-SYS",
             "OPS-SYS", "ACCESS-SYS", "EVOLUTION-SYS", "BACKTEST-SYS",
         ]
-        found_concepts = []
         missing_concepts = []
         for concept in expected_concepts:
-            count = text.count(concept)
-            if count > 0:
-                found_concepts.append((concept, count))
-            else:
+            if text.count(concept) == 0:
                 missing_concepts.append(concept)
 
         if missing_concepts:
             self.issues.append(
-                f"[Gate3.1] 缺失 {len(missing_concepts)} 个核心概念: {', '.join(missing_concepts[:5])}"
+                ("WARN", f"[Gate3.1] 缺失 {len(missing_concepts)} 个核心概念: {', '.join(missing_concepts[:5])}")
             )
 
-        # ── 3. 来源标注覆盖率检查 ──
+        # ── 3. 来源标注覆盖率检查（INFO: 建议性） ──
         source_refs = re.findall(r'（来源：([^）]+)）', text)
         source_rate = len(source_refs) / max(len(lines), 1) * 100
         if source_rate < 2.0 and len(lines) > 100:
             self.issues.append(
-                f"[Gate3.1] 来源标注覆盖率偏低 ({source_rate:.1f}%, 仅 {len(source_refs)} 处引用)"
+                ("INFO", f"[Gate3.1] 来源标注覆盖率偏低 ({source_rate:.1f}%, 仅 {len(source_refs)} 处引用)")
             )
 
-        # ── 4. 版本号检查 ──
-        version_match = re.search(r'v(\d+\.\d+(?:\.\d+)?)', text)
-        if not version_match:
+        # ── 4. 版本号检查（WARN） ──
+        if not re.search(r'v(\d+\.\d+(?:\.\d+)?)', text):
             self.issues.append(
-                f"[Gate3.1] 框架手册缺少版本号 (vX.Y)"
+                ("WARN", "[Gate3.1] 框架手册缺少版本号 (vX.Y)")
             )
 
-        # ── 5. 文档行数检查 ──
+        # ── 5. 文档行数检查（INFO） ──
         if len(lines) < 50:
             self.issues.append(
-                f"[Gate3.1] 框架手册仅 {len(lines)} 行，可能不完整"
+                ("INFO", f"[Gate3.1] 框架手册仅 {len(lines)} 行，可能不完整")
             )
 
-        # ── 6. QA-SYS 章节完整性检查 ──
+        # ── 6. QA-SYS 章节完整性检查（WARN: 章节缺失） ──
         required_sections = ["Gate0", "Gate1", "Gate2", "Gate3", "Gate4",
                             "Gate5", "Gate6", "Gate7", "Gate8", "Gate9"]
         for section in required_sections:
             if section not in text:
                 self.issues.append(
-                    f"[Gate3.1] 缺少 {section} 章节描述"
+                    ("WARN", f"[Gate3.1] 缺少 {section} 章节描述")
                 )
 
         return self.issues
@@ -468,11 +469,31 @@ class GateKeeper:
         self.check("Gate3 同步校验", len(issues) == 0, detail)
 
     def _gate3_1_self_audit(self):
-        """Gate3.1: 框架手册自审"""
+        """Gate3.1: 框架手册自审 — 分级阻断
+
+        BLOCKER → 阻断（逻辑错误，如权重和≠100%）
+        WARN    → 不阻断（潜在质量问题）
+        INFO    → 不阻断（建议性提示）
+        """
         auditor = FrameworkSelfAudit(self.root)
-        issues = auditor.run()
-        detail = "; ".join(issues) if issues else "框架手册自审通过"
-        self.check("Gate3.1 框架手册自审", len(issues) == 0, detail)
+        findings = auditor.run()
+        if not findings:
+            self.check("Gate3.1 框架手册自审", True, "框架手册自审通过")
+            return
+
+        blockers = [m for s, m in findings if s == "BLOCKER"]
+        warns = [m for s, m in findings if s == "WARN"]
+        infos = [m for s, m in findings if s == "INFO"]
+
+        detail_parts = []
+        if blockers:
+            detail_parts.append(f"🚫 {len(blockers)} 个阻断项: {'; '.join(blockers[:3])}")
+        if warns:
+            detail_parts.append(f"⚠️ {len(warns)} 个警告: {'; '.join(warns[:3])}")
+        if infos:
+            detail_parts.append(f"ℹ️ {len(infos)} 个提示: {'; '.join(infos[:3])}")
+
+        self.check("Gate3.1 框架手册自审", len(blockers) == 0, " | ".join(detail_parts))
 
     def _gate4_version(self):
         """Gate4: 版本与 WORM 归档"""
