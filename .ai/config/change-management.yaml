@@ -1,0 +1,54 @@
+# change-management.yaml — 变更管理配置
+# 框架手册：单一逻辑变更原则 + 变更影响分析
+version: '4.0'
+last_updated: '2026-07-20'
+change_rules:
+  single_logic_change:
+    enabled: true
+    description: "一个 PR 只能对应一个 .md 文件的逻辑变更"
+    exceptions:
+      - "关联文件联动更新（需在 PR 描述标注）"
+      - "测试用例伴随代码变更"
+    enforcement: "Gate3 SchemaValidator"
+  change_types:
+    - type: "config_change"
+      description: "参数/规则修改"
+      approval: "金哥"
+      required_docs:
+        - "docs/proposals/change_request_*.md"
+    - type: "architecture_change"
+      description: "架构/接口变更"
+      approval: "金哥 + KUN"
+      required_docs:
+        - "docs/ADR/*.md"
+    - type: "code_change"
+      description: "代码实现变更"
+      approval: "自动(Gate3/Gate5)"
+      required_docs:
+        - "对应设计文档更新"
+    - type: "emergency_fix"
+      description: "盘中紧急修复"
+      approval: "熔断后人工确认"
+      bypass_gates: true
+      post_fix_required:
+        - "盘后补全标准流程"
+antidrift:
+  enabled: true
+  description: "反文档漂移规则"
+  banned_words:
+    - "优化"
+    - "调整"
+    - "修复"
+    - "改进"
+    - "完善"
+  rule: "文档变更描述必须写明具体数值或逻辑变更"
+  example_bad: "优化了 L4 安全垫算法"
+  example_good: "将 L4 安全垫阈值从 0.5 调整为 0.6, 当 DD > 10% 时触发"
+impact_analysis:
+  enabled: true
+  required_for:
+    - "无测试覆盖的代码变更"
+    - "架构层变更"
+    - "风控参数变更"
+  output_dir: "docs/impact/"
+  template: "docs/templates/impact-analysis.md"

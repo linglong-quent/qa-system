@@ -1,0 +1,37 @@
+# retro-gates.yaml — 复盘门禁配置（Gate9）
+# 框架手册：回顾改进闭环 + 规则迭代
+version: '4.0'
+last_updated: '2026-07-20'
+retrospective:
+  enabled: true
+  frequency: "daily"  # 日复盘
+  deeper_frequency: "weekly"  # 周深度复盘
+  monthly_audit: true  # 月度审计
+outputs:
+  report_dir: "docs/retrospectives/"
+  required_reports:
+    - "daily_retro_{date}.md"
+    - "weekly_retro_{week}.md"
+    - "monthly_audit_{month}.md"
+analysis:
+  dimensions:
+    - name: "日志检查"
+      type: "automated"
+      tool: "log_analyzer"
+    - name: "IC 分析"
+      type: "automated"
+      tool: "ic_calculator"
+    - name: "亏损归因"
+      type: "automated"
+      tool: "loss_attribution"
+    - name: "规则有效性"
+      type: "human"
+      reviewer: "金哥"
+feedback_loop:
+  enabled: true
+  from: "复盘结论"
+  to: "下一轮需求"
+  mechanism: "复盘结论 → Gate0 Issue → 迭代"
+action_items:
+  required: true
+  format: "| 问题 | 根因 | 修复方案 | 责任人 | 截止日期 |"

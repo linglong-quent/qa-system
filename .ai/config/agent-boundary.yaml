@@ -1,0 +1,64 @@
+# agent-boundary.yaml — AI Agent 权限边界（Gate6）
+# 框架手册：KUN/CB 不越界编码，各司其职
+version: '4.0'
+last_updated: '2026-07-20'
+agents:
+  - name: "KUN"
+    role: "架构师"
+    allowed_operations:
+      - "创建/修改 .md 文档"
+      - "创建/修改 .schema.json 契约"
+      - "创建/修改 docs/ADR/ 下的架构决策"
+      - "创建/修改 config/rules/ 下的规则表"
+    forbidden_operations:
+      - "编写任何 .py 文件"
+      - "编写 .sh/.bat 脚本"
+      - "修改 .github/workflows/"
+    write_paths:
+      - "docs/**/*.md"
+      - "docs/**/*.json"
+      - "docs/**/*.yaml"
+      - "config/rules/**/*.yaml"
+    read_paths:
+      - "src/**/*.py"
+      - "scripts/**/*.py"
+  - name: "CB"
+    role: "程序员"
+    allowed_operations:
+      - "编写/修改 .py 代码"
+      - "编写/修改 .sh/.bat 脚本"
+      - "编写/修改 .yml/.yaml CI 配置"
+      - "编写测试用例"
+      - "编写 docs/proposals/ 提案"
+      - "提交修复 PR"
+    forbidden_operations:
+      - "修改 config/rules/*.yaml 规则表"
+      - "修改 docs/ADR/ 架构决策"
+      - "直接覆写 WORM 归档"
+    write_paths:
+      - "src/**/*.py"
+      - "scripts/**/*.py"
+      - "tests/**/*.py"
+      - ".github/workflows/*.yml"
+      - "docs/proposals/change_request_*.md"
+    read_paths:
+      - "docs/**/*"
+    proposal_only:
+      - "config/rules/"
+      - "config/params*.json"
+  - name: "金哥"
+    role: "决策者"
+    allowed_operations:
+      - "审批/拒绝任何变更"
+      - "修改 config/rules/"
+      - "修改资金管理参数"
+    automation: "不写代码，不 review 代码 diff，只审文档"
+boundary_enforcement:
+  enabled: true
+  severity: "BLOCKER"
+  gate: "Gate6"
+  auto_detect:
+    - "KUN 写入 .py 文件 → BLOCKER"
+    - "CB 写入 config/rules/*.yaml → BLOCKER"
+    - "CB 写入 docs/ADR/ → BLOCKER"
+    - "任何 Agent 写入 WORM 归档 → BLOCKER"

@@ -1,0 +1,36 @@
+# test-coverage.yaml — 测试覆盖门禁（Gate4）
+# 框架手册：测试覆盖门禁 + 无覆盖代码管控
+version: '4.0'
+last_updated: '2026-07-20'
+coverage:
+  enabled: true
+  current_coverage_pct: 15  # 当前基线
+  target_coverage_pct: 60   # 长期目标
+  gates:
+    min_accept_pct: 0      # 当前过渡期：不阻断新代码
+    warn_pct: 15           # 低于此值发出警告
+    block_pct: 5           # 低于此值阻断（过渡期后改为 20）
+  special_control:
+    no_coverage_mode: "highest_rigor"
+    description: "无测试覆盖的代码变更需：架构师审批 + 全量回测 + 变更影响分析报告"
+    required:
+      - "架构师审批"
+      - "全量回测(3年)"
+      - "变更影响分析报告(docs/impact/xxx.md)"
+scan:
+  tool: "coverage.py"
+  source_dir: "src/"
+  test_dir: "tests/"
+  exclude_patterns:
+    - "__pycache__"
+    - ".venv"
+    - "scripts/qa_*.py"
+    - "scripts/chk_*.py"
+report:
+  output: "docs/reports/test-coverage-report.md"
+  frequency: "每 PR"
+  required_sections:
+    - "总体覆盖率"
+    - "各模块覆盖率"
+    - "未覆盖代码清单"
+    - "趋势变化"

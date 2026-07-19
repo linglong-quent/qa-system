@@ -1,22 +1,154 @@
-﻿repos:
+# QA 系统 pre-commit 配置
+# 安装: pre-commit install
+# 手动跑: pre-commit run --all-files
+#
+# 所有 checker 通过 scripts/qa_check.py 统一入口运行，
+# 自动处理 PYTHONPATH，兼容 Windows/Linux/macOS 本地和 GitHub CI。
+#
+# 包含:
+#   black / isort / flake8 / mypy       — 标准 Python 工具链
+#   6 个内置 QA checker                 — inplace / lookahead / secret / deadcode / cyclic / code-ban
+#   qa-health                           — 统一检查运行器（汇总）
+#
+# 项目特有 hook 参见 _project_examples/pre-commit/
+
+repos:
   - repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:
       - id: black
         name: black-format
-        args: ["--line-length=120"]
+        language_version: python3.12
+        args: ["--line-length=120", "--target-version=py312"]
+        exclude: ^(_deprecated|archive)/
+
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
         name: isort-imports
         args: ["--profile=black", "--line-length=120"]
+        exclude: ^(_deprecated|archive)/
 
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.0
+    hooks:
+      - id: flake8
+        name: flake8-lint
+        args: ["--max-line-length=120", "--max-complexity=10", "--extend-ignore=E203,W503"]
+        exclude: ^(_deprecated|archive)/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        name: mypy-type-check
+        args: ["--strict", "--ignore-missing-imports", "--exclude=_deprecated|archive"]
+        exclude: ^(_deprecated|archive)/
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+
+  # ─── QA 系统 checker（统一入口 scripts/qa_check.py） ──────
   - repo: local
     hooks:
+      - id: qa-inplace
+        name: qa-inplace (pandas inplace=True)
+        entry: python scripts/qa_check.py inplace
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-lookahead
+        name: qa-lookahead (前视偏差检测)
+        entry: python scripts/qa_check.py lookahead
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-secret
+        name: qa-secret (硬编码密钥检测)
+        entry: python scripts/qa_check.py secret
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-deadcode
+        name: qa-deadcode (孤儿代码检测)
+        entry: python scripts/qa_check.py deadcode
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-cyclic
+        name: qa-cyclic (循环导入检测)
+        entry: python scripts/qa_check.py cyclic
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-codeban
+        name: qa-codeban (代码禁用规则)
+        entry: python scripts/qa_check.py code-ban
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-boundary
+        name: qa-boundary (架构边界门禁)
+        entry: python scripts/qa_check.py boundary
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-config
+        name: qa-config (配置自审)
+        entry: python scripts/qa_check.py config
+        language: system
+        files: \.yaml$
+        pass_filenames: false
+        always_run: true
+
+      - id: qa-gates
+        name: qa-gates (质量门控)
+        entry: python scripts/qa_check.py gates
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: qa-claude
+        name: qa-claude (CLAUDE 验证)
+        entry: python scripts/qa_check.py claude
+        language: system
+        files: \.md$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-health
+        name: qa-health (QA 统一检查汇总)
+        entry: python scripts/qa_check.py health
+        language: system
+        files: \.py$
+        pass_filenames: false
+        always_run: false
+
+      - id: qa-prod
+        name: qa-prod (生产环境就绪检查)
+        entry: python scripts/qa_check.py prod
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: qa-gate
-        name: qa-gate (0-pollution mode)
-        entry: cmd /c "set QA_SYSTEM_ROOT=D:\Users\pc\.kun\qa-system&& set QA_PROJECT_NAME=qa-system&& python D:\Users\pc\.kun\qa-system/scripts/qa_gate.py"
+        name: qa-gate (总闸门 — 提交前最后一道)
+        entry: python scripts/qa_gate.py
         language: system
         pass_filenames: false
         always_run: true

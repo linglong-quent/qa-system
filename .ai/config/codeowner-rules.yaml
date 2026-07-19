@@ -1,0 +1,56 @@
+# codeowner-rules.yaml — CODEOWNERS 与权限矩阵（Gate6）
+# 框架手册：人机共治中的权限分隔
+version: '4.0'
+last_updated: '2026-07-20'
+codeowners:
+  enabled: true
+  auto_generate: false  # 手动维护 .github/CODEOWNERS
+  default_owner: "@金哥"
+  patterns:
+    - pattern: "docs/ADR/"
+      owners: ["@KUN"]
+    - pattern: "docs/SOP/"
+      owners: ["@CB"]
+    - pattern: "scripts/chk_*.py"
+      owners: ["@CB"]
+    - pattern: "scripts/qa_*.py"
+      owners: ["@CB"]
+    - pattern: "config/rules/*.yaml"
+      owners: ["@金哥"]
+    - pattern: ".github/workflows/"
+      owners: ["@CB"]
+    - pattern: "src/domain/decision/"
+      owners: ["@KUN"]
+    - pattern: "src/domain/survival/"
+      owners: ["@KUN"]
+permission_matrix:
+  roles:
+    - role: "架构师(KUN)"
+      can_write:
+        - "docs/**/*.md"
+        - "docs/**/*.schema.json"
+        - "docs/**/*.yaml"
+      can_read:
+        - "src/**/*.py"
+      cannot_write:
+        - "src/**/*.py"
+        - "scripts/**/*.py"
+        - "config/params*.json"
+    - role: "程序员(CB)"
+      can_write:
+        - "src/**/*.py"
+        - "scripts/**/*.py"
+        - "tests/**/*.py"
+        - ".github/workflows/*.yml"
+      can_read:
+        - "docs/**/*"
+      cannot_write:
+        - "config/rules/*.yaml"
+        - "docs/ADR/*.md"
+    - role: "决策者(金哥)"
+      can_write:
+        - "config/rules/*.yaml"
+        - "**/*"
+      can_approve:
+        - "docs/**/*"
+        - "config/**/*"

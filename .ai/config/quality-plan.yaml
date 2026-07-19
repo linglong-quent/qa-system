@@ -1,70 +1,64 @@
-plan_version: '1.0'
-last_updated: '2026-07-17'
-project_type: qa-system
-quality_objectives:
-- id: Q1
-  name: 零硬编码密钥
-  standard: OWASP Top 10 A2
-  enforced_by: secret_check
-  severity: BLOCKER
-  target: 任何提交中零硬编码密钥
-- id: Q2
-  name: 架构边界合规
-  standard: 'NASA Power of 10 #3'
-  enforced_by: import_boundary
-  severity: BLOCKER
-  target: _core/ 不导入 dev-only 模块
-- id: Q3
-  name: 没有前视偏差
-  standard: 量化交易最佳实践
-  enforced_by: lookahead_check
-  severity: BLOCKER
-  target: 回测代码中无 shift(-N) 穿越
-- id: Q4
-  name: 代码可维护
-  standard: ISO 25010 Maintainability
-  enforced_by: deadcode_check
-  severity: WARN
-  target: 无多余公共符号
-- id: Q5
-  name: 配置自洽
-  standard: IEEE 730
-  enforced_by: config_audit
-  severity: WARN
-  target: 所有配置可解析、无废弃文件
-- id: Q6
-  name: AI 编码有约束
-  standard: ISO 25010
-  enforced_by: claude_validation
-  severity: WARN
-  target: CLAUDE.md 存在且规则完整
-risk_zones:
-- zone: core
-  path_pattern: scripts/
-  risk_level: critical
-  require_gates:
-  - Q1
-  - Q2
-  - Q3
-  - Q4
-- zone: strategy
-  path_pattern: strategy/|strategies/
-  risk_level: high
-  require_gates:
-  - Q1
-  - Q3
-  - Q4
-- zone: data
-  path_pattern: data/|feeder/
-  risk_level: medium
-  require_gates:
-  - Q1
-  - Q4
-- zone: tools
-  path_pattern: scripts/
-  risk_level: low
-  require_gates:
-  - Q4
-gate_threshold:
-  BLOCKER: 零容忍，有则阻断
-  WARN: 建议修复，不阻断
+# quality-plan.yaml — 质量规划（PDCA 闭环）
+# 框架手册：QA-SYS 规划器输入，定义质量目标、检查频次、责任人
+version: '4.0'
+last_updated: '2026-07-20'
+plan_do_check_act:
+  enabled: true
+  cycle_id: "PDCA-001"
+  plan:
+    description: "玲珑量化质量规划"
+    objectives:
+      - id: OBJ-01
+        name: "零阻断级违规"
+        target: 0
+        metric: "gate_blockers"
+        deadline: "持续"
+      - id: OBJ-02
+        name: "文档覆盖率 ≥80%"
+        target: 80
+        metric: "doc_coverage_pct"
+        deadline: "2026-Q3"
+      - id: OBJ-03
+        name: "测试覆盖率 ≥60%"
+        target: 60
+        metric: "test_coverage_pct"
+        deadline: "2026-Q4"
+      - id: OBJ-04
+        name: "代码健康评分 ≥85"
+        target: 85
+        metric: "health_score"
+        deadline: "持续"
+  do:
+    check_frequency: "每 PR"
+    tools:
+      - "qa_check.py (19 checker)"
+      - "qa_gate.py (Gate0-Gate9)"
+      - "pre-commit (15 hooks)"
+  check:
+    review_gates:
+      - "Gate3 SchemaValidator"
+      - "Gate3.1 框架自审"
+      - "Gate5 评分检测"
+    metrics_tracked:
+      - "errors_per_checker"
+      - "gate_pass_rate"
+      - "issue_resolution_time"
+  act:
+    feedback_loop:
+      - "qa_defect.py create/close/suspend"
+      - "qa_classify.py 问题分类 → pending.json"
+      - "qa_ai.py fix-loop AI 自动修复"
+    escalation:
+      repeated_defects: "loop_count > 3 → 人工介入"
+      gate_blocked: "3 consecutive → 暂停发布"
+quality_targets:
+  code_quality:
+    min_score: 60
+    target_score: 85
+    red_line: 40
+  documentation:
+    min_coverage: 50
+    target_coverage: 80
+  testing:
+    min_coverage: 15
+    target_coverage: 60
