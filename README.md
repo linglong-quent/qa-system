@@ -7,17 +7,17 @@
 ```
 玲珑量化框架手册 → QA-SYS v4.0 实现
 ┌──────────────────────────────────────────────────────────┐
-│  Gate0  AI-First / Issue    — 需求规范       (规划中)    │
-│  Gate1  Position            — 文档位置校验    (自动化)    │
-│  Gate2  Naming              — 文档命名校验    (自动化)    │
-│  Gate3  Sync                — SchemaValidator + 目录     │
+│  Gate0  AI-First / Issue    — Issue 模板+PR关联   (已实现) │
+│  Gate1  Position            — 文档位置校验         (自动化) │
+│  Gate2  Naming              — 文档命名校验         (自动化) │
+│  Gate3  Sync                — SchemaValidator + 目录      │
 │  Gate3.1 Framework Self-Audit— 框架手册自审   (权重错阻断) │
-│  Gate4  Version & WORM      — Git 哈希 + Append-Only    │
-│  Gate5  Scoring & Checkers  — 19 检测器 + 评分          │
-│  Gate6  Permission          — CODEOWNERS + 权限边界     │
-│  Gate7  Closed-Loop         — 违规→申诉→迭代            │
-│  Gate8  Deployment          — 生产就绪         (规划中)  │
-│  Gate9  Compliance & Retro  — 合规+自检+复盘   (新增)   │
+│  Gate4  Version & WORM      — Git 哈希 + Append-Only     │
+│  Gate5  Scoring & Checkers  — 19 检测器 + 评分           │
+│  Gate6  Permission          — CODEOWNERS + 权限边界      │
+│  Gate7  Closed-Loop         — 违规→申诉→迭代             │
+│  Gate8  Deployment          — 生产就绪+CHANGELOG+版本     │
+│  Gate9  Compliance & Retro  — 合规+自检+复盘             │
 └──────────────────────────────────────────────────────────┘
 ```
 

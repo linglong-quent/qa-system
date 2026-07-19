@@ -21,7 +21,11 @@ jobs:
       - name: QA Self Test
         run: python scripts/qa_self_test.py
 
-      # ── P1: 全量检查（非阻断，报告用） ──
+      # ── P1: Gate0 Issue 规范（阻断式） ──
+      - name: Gate0 Issue Compliance
+        run: python scripts/qa_gate.py --gate=0
+
+      # ── P2: 全量检查（非阻断，报告用） ──
       - name: QA Full Check
         continue-on-error: true
         run: python scripts/qa_check.py health
