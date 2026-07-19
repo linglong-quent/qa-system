@@ -1,4 +1,4 @@
-name: QA Nightly — Full Pipeline Scan
+﻿name: QA Nightly 鈥?Full Pipeline Scan (Gate0-Gate9)
 
 on:
   schedule:
@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -27,39 +27,51 @@ jobs:
       # =============================================
       # P0: Self-test
       # =============================================
-      - name: P0 — QA 系统自检
+      - name: P0 鈥?QA 绯荤粺鑷
         id: self_test
         run: python scripts/qa_self_test.py
         continue-on-error: true
 
       # =============================================
-      # P1: Full QA
+      # P1: Full QA Check (19 checker)
       # =============================================
-      - name: P1 — 全量检查
-        id: qa_check
+      - name: P1 鈥?鍏ㄩ噺妫€鏌?        id: qa_check
         run: python scripts/qa_check.py health
         continue-on-error: true
 
       # =============================================
-      # P2: Classify
+      # P2: SchemaValidator (瀹硶鍥?
       # =============================================
-      - name: P2 — 问题分类
+      - name: P2 鈥?Gate3 SchemaValidator
+        id: schema_validator
+        run: python scripts/qa_gate.py --gate=3
+        continue-on-error: true
+
+      # =============================================
+      # P3: FrameworkSelfAudit (Gate3.1)
+      # =============================================
+      - name: P3 鈥?Gate3.1 妗嗘灦鎵嬪唽鑷
+        id: framework_audit
+        run: python scripts/qa_gate.py --gate=3.1
+        continue-on-error: true
+
+      # =============================================
+      # P4: Classify + Feedback
+      # =============================================
+      - name: P4 鈥?闂鍒嗙被
         id: classify
         run: python scripts/qa_classify.py
         continue-on-error: true
 
-      # =============================================
-      # P3: Feedback
-      # =============================================
-      - name: P3 — 反馈回路
+      - name: P4b 鈥?鍙嶉鍥炶矾
         id: feedback
         run: python scripts/qa_plan.py feedback
         continue-on-error: true
 
       # =============================================
-      # P4: Gate
+      # P5: Gate0-Gate9 鍗佸眰闂ㄧ鎬婚椄
       # =============================================
-      - name: P4 — 总闸门
+      - name: P5 鈥?Gate0-Gate9 鍗佸眰闂ㄧ
         id: final_gate
         run: python scripts/qa_gate.py
 
@@ -67,7 +79,7 @@ jobs:
       # Archive
       # =============================================
       - name: Archive QA Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: qa-nightly-$(date +%Y%m%d)
@@ -81,10 +93,14 @@ jobs:
         if: always()
         run: |
           echo "=============================="
-          echo "QA Nightly Scan — Complete"
+          echo "QA Nightly Scan 鈥?Gate0-Gate9 Complete"
           echo "=============================="
           if [ -f .ai/logs/qa-report.json ]; then
             ERRORS=$(python -c "import json; r=json.load(open('.ai/logs/qa-report.json')); print(r['errors'])")
             echo "Total errors: $ERRORS"
           fi
           echo "Artifacts retained for 90 days"
+          echo "SchemaValidator: gate=3"
+          echo "FrameworkSelfAudit: gate=3.1"
+          echo "Full Gate: Gate0-Gate9"
+

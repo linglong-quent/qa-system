@@ -13,21 +13,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install
         run: pip install pyyaml
+
+      # ── P0: 系统自检（阻断式） ──
       - name: QA Self Test
         run: python scripts/qa_self_test.py
+
+      # ── P1: 全量检查（非阻断，报告用） ──
       - name: QA Full Check
         continue-on-error: true
         run: python scripts/qa_check.py health
-      - name: QA Gate (report only, non-blocking)
+
+      # ── P2-P4: v4.0 新增门禁（非阻断） ──
+      - name: Gate3 SchemaValidator
+        continue-on-error: true
+        run: python scripts/qa_gate.py --gate=3
+
+      - name: Gate3.1 Framework Self-Audit
+        continue-on-error: true
+        run: python scripts/qa_gate.py --gate=3.1
+
+      - name: QA Gate (Gate0-Gate9)
         continue-on-error: true
         run: python scripts/qa_gate.py --report
+
+      # ── 报告上传 ──
       - name: Upload Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: qa-report
           path: .ai/logs/qa-report.json
-          retention-days: 7
-
+          retention-days: 90
