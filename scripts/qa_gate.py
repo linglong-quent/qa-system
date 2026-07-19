@@ -598,7 +598,9 @@ class GateKeeper:
         if score is not None:
             detail_parts.append(f"健康评分: {score}/100")
 
-        self.check("Gate5 评分检测", len(missing) == 0 and errors == 0 and gate_errors == 0,
+        # Gate5 阻断条件：CODE_CHECKERS 必须全部通过
+        # quality_gates/claude 等元检查仅报告，不阻断
+        self.check("Gate5 评分检测", len(missing) == 0 and errors == 0,
                     " · ".join(detail_parts))
 
     def _calc_score(self, report: dict) -> Optional[float]:

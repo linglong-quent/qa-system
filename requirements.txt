@@ -1,0 +1,5 @@
+# QA System v4.0 — 核心依赖
+pyyaml>=6.0
+
+# 可选：Schema 验证
+# jsonschema>=4.0

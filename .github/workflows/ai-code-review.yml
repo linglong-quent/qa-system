@@ -1,4 +1,4 @@
-﻿name: QA Self-Test
+name: QA Self-Test
 on:
   push:
     branches: [main]
@@ -17,33 +17,35 @@ jobs:
       - name: Install
         run: pip install pyyaml
 
-      # ── P0: 系统自检（阻断式） ──
-      - name: QA Self Test
+      # ═══════════════════════════════════════════════
+      # A++ 质量标准 — 全部阻断式
+      # ═══════════════════════════════════════════════
+
+      # ── P0: 系统自检 ──
+      - name: P0 — QA Self-Test
         run: python scripts/qa_self_test.py
 
-      # ── P1: Gate0 Issue 规范（阻断式） ──
-      - name: Gate0 Issue Compliance
+      # ── P1: Gate0 Issue 规范 ──
+      - name: P1 — Gate0 Issue Compliance
         run: python scripts/qa_gate.py --gate=0
 
-      # ── P2: 全量检查（非阻断，报告用） ──
-      - name: QA Full Check
-        continue-on-error: true
+      # ── P2: 全量检查（19 checker + Python工程结构） ──
+      - name: P2 — QA Full Check
         run: python scripts/qa_check.py health
 
-      # ── P2-P4: v4.0 新增门禁（非阻断） ──
-      - name: Gate3 SchemaValidator
-        continue-on-error: true
+      # ── P3: Gate3 SchemaValidator（宪法四） ──
+      - name: P3 — Gate3 SchemaValidator
         run: python scripts/qa_gate.py --gate=3
 
-      - name: Gate3.1 Framework Self-Audit
-        continue-on-error: true
+      # ── P4: Gate3.1 框架自审（权重错误阻断） ──
+      - name: P4 — Gate3.1 Framework Self-Audit
         run: python scripts/qa_gate.py --gate=3.1
 
-      - name: QA Gate (Gate0-Gate9)
-        continue-on-error: true
-        run: python scripts/qa_gate.py --report
+      # ── P5: Gate0-Gate9 十层门禁总闸 ──
+      - name: P5 — QA Gate (Gate0-Gate9)
+        run: python scripts/qa_gate.py
 
-      # ── 报告上传 ──
+      # ── 报告上传（always: 就算失败也上传） ──
       - name: Upload Report
         uses: actions/upload-artifact@v4
         if: always()
