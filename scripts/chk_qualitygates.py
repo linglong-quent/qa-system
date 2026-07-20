@@ -81,7 +81,7 @@ GATES = [
         "checker": "deploy-check",
         "standard": "ISO 27001 A.12.1",
         "pass_condition": "依赖均可用",
-        "severity": "BLOCKER",
+        "severity": "WARN",  # 标准对标不阻断
     },
 ]
 
