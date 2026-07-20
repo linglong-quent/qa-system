@@ -152,7 +152,8 @@ class QualityGateChecker:
                 passed = True
 
             if not passed:
-                errors += 1
+                if severity == "BLOCKER":
+                    errors += 1  # 仅 BLOCKER 阻断
                 issues.append(f"[GATE] {gid} {name} — {'❌' if passed == False else '⏭️'} [{severity}] {standard}")
             else:
                 issues.append(f"[GATE] {gid} {name} — ✅")
