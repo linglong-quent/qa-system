@@ -96,7 +96,6 @@ def main():
     for f in core_files:
         check_file(os.path.join(base, f), f)
     check_dir(os.path.join(base, ".ai/plugins"), ".ai/plugins/")
-    check_dir(os.path.join(base, "_project_examples"), "_project_examples/")
 
     print()
 
