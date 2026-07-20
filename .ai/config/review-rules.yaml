@@ -290,6 +290,7 @@ codestyle_check:
 governance_check:
   enabled: true
   severity: WARN
+  strict_python_struct: false  # QA系统自身是工具仓库，不需要src/tests
   expected_dirs:
   - scripts/
   - docs/

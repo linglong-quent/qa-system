@@ -21,6 +21,7 @@ class GovernanceChecker:
         self.project_root = os.path.abspath(project_root)
         self.expected_structure = config.get("expected_dirs",
                                               ["src/", "tests/", "docs/", "scripts/"])
+        self.strict_python = config.get("strict_python_struct", True)
 
     def check(self) -> Tuple[int, List[str]]:
         issues = []
@@ -57,22 +58,23 @@ class GovernanceChecker:
             issues.append("[PY-05] 缺少 README.md（项目说明）")
             errors += 1
 
-        # src/ 或根级 Python 包
-        has_root_pkg = any(
-            os.path.isdir(os.path.join(self.project_root, d))
-            and os.path.exists(os.path.join(self.project_root, d, "__init__.py"))
-            for d in os.listdir(self.project_root)
-            if os.path.isdir(os.path.join(self.project_root, d))
-            and not d.startswith((".", "_"))
-            and d not in ("tests", "docs", "scripts", "config", "data", "archive")
-        )
-        if not has_src and not has_root_pkg:
-            issues.append("[PY-06] 缺少 src/ 目录或 Python 包（含 __init__.py）")
-            errors += 1
+        if self.strict_python:
+            # src/ 或根级 Python 包
+            has_root_pkg = any(
+                os.path.isdir(os.path.join(self.project_root, d))
+                and os.path.exists(os.path.join(self.project_root, d, "__init__.py"))
+                for d in os.listdir(self.project_root)
+                if os.path.isdir(os.path.join(self.project_root, d))
+                and not d.startswith((".", "_"))
+                and d not in ("tests", "docs", "scripts", "config", "data", "archive")
+            )
+            if not has_src and not has_root_pkg:
+                issues.append("[PY-06] 缺少 src/ 目录或 Python 包（含 __init__.py）")
+                errors += 1
 
-        if not has_tests:
-            issues.append("[PY-07] 缺少 tests/ 目录")
-            errors += 1
+            if not has_tests:
+                issues.append("[PY-07] 缺少 tests/ 目录")
+                errors += 1
 
         # ── 2. 目录结构检查 ──
         for ed in self.expected_structure:
