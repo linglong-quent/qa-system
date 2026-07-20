@@ -58,6 +58,10 @@ class CodeStyleChecker:
                 issues.append(f"[STYLE-02] {rel}:{i} 行过长 ({len(line)} 字符 > 200)")
                 break  # 每文件只报一次
 
+        # 文件总行数限制（不超过 500 行，保持代码聚焦）
+        if len(lines) > 500:
+            issues.append(f"[STYLE-05] {rel}: 文件 {len(lines)} 行 > 500，建议拆分为多个模块")
+
         # 函数/类命名检查
         try:
             tree = ast.parse(content)
