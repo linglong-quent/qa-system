@@ -1,9 +1,0 @@
-version: '2.0'
-terms: {}
-forbidden:
-- 回测毛刺
-- 过拟合
-- 偷跑
-- 未来函数
-- TODO
-- FIXME

@@ -1,8 +1,0 @@
-version: '2.0'
-risks:
-- id: RISK-001
-  description: 文档与代码不同步
-  severity: HIGH
-- id: RISK-002
-  description: AI 幻觉导致错误文档
-  severity: HIGH
