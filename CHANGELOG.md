@@ -1,6 +1,12 @@
-﻿# Changelog
+# Changelog
 
 ## [4.0] - 2026-07-20
+
+### 新增
+- STYLE-05 文件行数 ≤ 500（从 nfr-baseline.yaml 读取，ISO 25010）
+- STYLE-06 函数行数 ≤ 60（从 nfr-baseline.yaml 读取，NASA Power of 10）
+- STYLE-02 行长度限制改为 120 字符（PEP 8，原 200）
+- checker 现在从规则表配置读取行业标准阈值，配置定义即执行
 - Gate0-Gate9 十层门禁架构（替代原有 11 道门）
 - 新增 SchemaValidator（文档参数↔代码常量自动比对，宪法四）
 - 新增 Gate3.1 FrameworkSelfAudit（框架手册自审，分级阻断）
