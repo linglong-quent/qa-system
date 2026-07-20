@@ -8,7 +8,14 @@
   5. Schema 鏈夋晥鎬?鈥?qa-report.schema.json 鍚堟硶
   6. YAML 璇硶 鈥?鎵€鏈?.yaml .yml 鍙В鏋?  7. 鎻掍欢鍙彂鐜?鈥?.ai/plugins/ 鐩綍缁撴瀯姝ｅ父
   8. 杩愯娴嬭瘯 鈥?瀹屾暣璺戜竴杞紝纭涓嶅穿婧?"""
-import ast, json, os, sys, importlib, importlib.util, yaml
+import ast, json, os, sys, importlib, importlib.util
+
+# yaml 仅在 YAML 语法检查时使用，非安装时自测不阻塞
+try:
+    import yaml
+    _HAS_YAML = True
+except ImportError:
+    _HAS_YAML = False
 
 _OK = "\033[92mOK\033[0m"
 _FAIL = "\033[91mFAIL\033[0m"
@@ -130,31 +137,34 @@ def main():
     print("3. YAML syntax")
     print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
 
-    yaml_dirs = [
-        os.path.join(base, ".ai/config"),
-        os.path.join(base, ".github/workflows"),
-    ]
-    for d in yaml_dirs:
-        if not os.path.isdir(d):
-            continue
-        for f in sorted(os.listdir(d)):
-            if not (f.endswith(".yaml") or f.endswith(".yml")):
+    if not _HAS_YAML:
+        print("  [SKIP] 未安装 pyyaml，跳过 YAML 语法检查")
+    else:
+        yaml_dirs = [
+            os.path.join(base, ".ai/config"),
+            os.path.join(base, ".github/workflows"),
+        ]
+        for d in yaml_dirs:
+            if not os.path.isdir(d):
                 continue
-            path = os.path.join(d, f)
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    yaml.safe_load(fh)
-                check(True, os.path.relpath(path, base))
-            except yaml.YAMLError as e:
-                check(False, os.path.relpath(path, base), str(e))
+            for f in sorted(os.listdir(d)):
+                if not (f.endswith(".yaml") or f.endswith(".yml")):
+                    continue
+                path = os.path.join(d, f)
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        yaml.safe_load(fh)
+                    check(True, os.path.relpath(path, base))
+                except yaml.YAMLError as e:
+                    check(False, os.path.relpath(path, base), str(e))
 
-    # pre-commit config
-    try:
-        with open(os.path.join(base, ".pre-commit-config.yaml"), "r", encoding="utf-8") as f:
-            yaml.safe_load(f)
-        check(True, ".pre-commit-config.yaml")
-    except yaml.YAMLError as e:
-        check(False, ".pre-commit-config.yaml", str(e))
+        # pre-commit config
+        try:
+            with open(os.path.join(base, ".pre-commit-config.yaml"), "r", encoding="utf-8") as f:
+                yaml.safe_load(f)
+            check(True, ".pre-commit-config.yaml")
+        except yaml.YAMLError as e:
+            check(False, ".pre-commit-config.yaml", str(e))
 
     print()
 
