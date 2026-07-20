@@ -85,6 +85,7 @@ set QA_SYSTEM_ROOT=E:\WB\QA-System
 | 能力 | 说明 |
 |------|------|
 | 19 个内置 Checker | 消费 21 张 YAML 规则表的配置，执行静态分析与合规检查 |
+| 代码行数门禁 | STYLE-01~06：PEP 8 / NASA Power of 10 / ISO 25010 |
 | SchemaValidator | 文档参数 ↔ 代码常量自动比对 (宪法四) |
 | Gate3.1 框架自审 | 权重/概念/来源/版本完整性检查（权重错误→BLOCKER） |
 | 4 级干预 | BLOCKER / WARN / INFO / PASS |
