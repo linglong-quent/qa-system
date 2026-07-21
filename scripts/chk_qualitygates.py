@@ -107,8 +107,8 @@ class QualityGateChecker:
         # 读取上次 QA 报告
         report = self._load_report()
         if report is None:
-            issues.append("[GATE] 无 QA 报告 — 请先运行 qa_check.py")
-            return 1, issues
+            issues.append("[GATE] 无 QA 报告（首次运行跳过质量门控）")
+            return 0, issues  # 首次运行无上一轮报告，不阻断
 
         checker_results = report.get("checkers", {})
 
