@@ -4,6 +4,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:  # 昤宝宝可通过 API 远程触发 CI
 
 jobs:
   self-test:
