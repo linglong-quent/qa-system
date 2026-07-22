@@ -59,6 +59,9 @@ class SchemaValidator:
         if not os.path.isdir(self.docs_dir):
             return params
         for root, dirs, files in os.walk(self.docs_dir):
+            # 跳过生成文档和临时文件
+            skip_doc_dirs = {"portraits", "archive", "draft", "tmp", "_archive"}
+            dirs[:] = [d for d in dirs if d not in skip_doc_dirs]
             for f in files:
                 if not f.endswith(".md"):
                     continue
@@ -232,20 +235,38 @@ class FrameworkSelfAudit:
         lines = text.split('\n')
         rel_path = os.path.relpath(manual_path, self.project_root)
 
-        # ── 1. 权重检查（BLOCKER: 逻辑错误） ──
+                # ── 1. 权重检查（BLOCKER: 逻辑错误）
+        # 多组权重场景：按空行分段，逐段验证
         weight_pattern = re.compile(
-            r'(?:趋势|形态|量价|资金|情绪|题材|筹码|大盘|板块|个股|因子)'
+            r'(?:趋势|形态|量价|资金|情绪|题材|筹码|大盘|板块|个股|因子|指标|涨停|估值)'
             r'\s*(\d+(?:\.\d+)?)\s*%'
         )
-        weights = weight_pattern.findall(text)
-        if weights:
-            total = sum(float(w) for w in weights)
-            if abs(total - 100.0) > 0.5 and abs(total - 1.0) > 0.01:
-                self.issues.append(
-                    ("BLOCKER", f"[Gate3.1] 权重和={total:.1f}% ≠ 100% — {rel_path}")
-                )
+        text_lines = text.split('\n')
+        segments = []
+        current = []
+        for line in text_lines:
+            if not line.strip():
+                if current:
+                    segments.append(' '.join(current))
+                    current = []
+            else:
+                current.append(line.strip())
+        if current:
+            segments.append(' '.join(current))
 
-        # ── 2. 概念分布检查（WARN: 文档可能不完整） ──
+        bad_segments = []
+        for seg in segments:
+            seg_weights = weight_pattern.findall(seg)
+            if len(seg_weights) >= 3:
+                total = sum(float(w) for w in seg_weights)
+                if abs(total - 100.0) > 0.5 and abs(total - 1.0) > 0.01:
+                    bad_segments.append(f"({total:.0f}%: {seg[:40]}...)")
+
+        if bad_segments:
+            detail = "; ".join(bad_segments[:3])
+            self.issues.append(
+                ("BLOCKER", f"[Gate3.1] 权重段和≠100%: {detail} — {rel_path}")
+            )# ── 2. 概念分布检查（WARN: 文档可能不完整） ──
         expected_concepts = [
             "人机共治", "五系统", "六条流", "七库", "Gate",
             "宪法", "SchemaValidator", "QA-SYS", "LINGLONG-SYS",
@@ -497,8 +518,13 @@ class GateKeeper:
                         r'from\s+domain\.(\w+)\.(?!api)(\w+)', content
                     )
                     current_domain = os.path.relpath(root, os.path.join(self.root, "domain")).split(os.sep)[0]
+                    import_exempt = set(self.config.get("import_exempt", []))
                     for imported_domain, imported_mod in domain_imports:
                         if imported_domain != current_domain:
+                            # 检查豁免列表
+                            exempt_key = f"{current_domain}.{imported_domain}.{imported_mod}"
+                            if exempt_key in import_exempt:
+                                continue
                             rel_path = os.path.relpath(fpath, self.root)
                             issues.append(
                                 f"越域import: {rel_path} 直接 import domain.{imported_domain}.{imported_mod} "
@@ -753,9 +779,11 @@ class GateKeeper:
 
         # ── 系统自检 ──
         try:
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
             r = subprocess.run(
                 [sys.executable, os.path.join(_SCRIPTS_DIR, "qa_self_test.py")],
-                capture_output=True, timeout=30, cwd=self.root
+                capture_output=True, timeout=30, cwd=self.root, env=env
             )
             if r.returncode != 0:
                 issues.append("系统自检失败")

@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import sys, os
+# 强制 stdout/stderr 用 UTF-8，防止 GBK 管道截断 Unicode
+if hasattr(sys.stdout, 'reconfigure'):
+    try: sys.stdout.reconfigure(encoding='utf-8')   # py3.7+
+    except Exception: pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try: sys.stderr.reconfigure(encoding='utf-8')
+    except Exception: pass
 """QA 系统统一入口 — 跨环境 (本地/CI/GitHub) 运行所有 checker。
 
 用法:
