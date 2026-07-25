@@ -266,39 +266,135 @@ class HealthScorer:
 
 
     def _parse_issue_details(self, issues: List[str]) -> List[dict]:
-        """从 issue 文本提取结构化信息，供 AI Agent 可编程读取"""
+        """从 issue 文本提取结构化信息，供 AI Agent 直接使用，无需猜测"""
+        # 每条规则的完整定义（Agent 不用猜"因为什么"）
+        RULES = {
+            "STYLE-01": {
+                "severity": "WARN",
+                "title": "文件名应使用小写+下划线",
+                "expected": "文件名仅含小写字母、数字、下划线",
+                "standard": "PEP 8 — 包和模块命名",
+                "fix_hint": "重命名文件为小写+下划线格式",
+            },
+            "STYLE-02": {
+                "severity": "WARN",
+                "title": "行长度超限",
+                "expected": "每行 ≤ 120 字符",
+                "standard": "PEP 8 — 最大行长度",
+                "fix_hint": "拆分长行为多行，或提取变量缩短行",
+            },
+            "STYLE-03": {
+                "severity": "WARN",
+                "title": "命名违规",
+                "expected": "函数 snake_case, 类 PascalCase",
+                "standard": "PEP 8 — 命名约定",
+                "fix_hint": "按命名规范重命名",
+            },
+            "STYLE-04": {
+                "severity": "WARN",
+                "title": "日志格式错误",
+                "expected": "logging 使用 %% 格式化",
+                "standard": "框架手册 — 日志规范",
+                "fix_hint": "将 f-string 改为 %s 占位符格式",
+            },
+            "STYLE-05": {
+                "severity": "WARN",
+                "title": "文件行数超限",
+                "expected": "文件 ≤ 500 行",
+                "standard": "ISO 25010 — 可维护性 / Clean Code",
+                "fix_hint": "拆分为多个模块（如按功能/类拆分）",
+            },
+            "STYLE-06": {
+                "severity": "WARN",
+                "title": "函数行数超限",
+                "expected": "函数 ≤ 60 行",
+                "standard": "NASA Power of 10 — 规则 5",
+                "fix_hint": "将函数内的逻辑块抽成独立子函数",
+            },
+            "PY-06": {
+                "severity": "WARN",
+                "title": "缺少 src/ 或 Python 包",
+                "expected": "项目根目录应有 src/ 或根级 __init__.py",
+                "standard": "Python 工程规范",
+                "fix_hint": "创建 src/ 目录或添加 __init__.py",
+            },
+            "PY-07": {
+                "severity": "WARN",
+                "title": "缺少 tests/ 目录",
+                "expected": "项目应有 tests/ 目录",
+                "standard": "Python 工程规范",
+                "fix_hint": "创建 tests/ 目录并添加测试",
+            },
+        }
         details = []
         for issue in issues:
             detail = {
-                "rule": "", "file": "", "line": 0,
-                "message": issue, "standard": "",
+                "rule": "", "severity": "INFO",
+                "file": "", "line": 0,
+                "violation": "", "expected": "", "actual": "",
+                "standard": "", "description": issue,
+                "fix_hint": "",
             }
-            # 提取规则编号 [STYLE-01], [GATE], [PY-06] 等
-            m = re.match(r'\[([A-Z]+-\d+)\]', issue)
+            # 提取规则编号 [STYLE-01], [GATE] G5, [PY-06] 等
+            m = re.match(r'\[(\w[\w-]*)\]\s*(G?\d+)?', issue)
             if m:
                 detail["rule"] = m.group(1)
-            # 提取文件名 path/file.py
+                rule_info = RULES.get(detail["rule"])
+                if rule_info:
+                    detail["severity"] = rule_info["severity"]
+                    detail["expected"] = rule_info["expected"]
+                    detail["standard"] = rule_info["standard"]
+                    detail["fix_hint"] = rule_info["fix_hint"]
+                    detail["title"] = rule_info["title"]
+
+            # 提取文件名
             m = re.search(r"""([\w\\/.-]+\.py)""", issue)
             if m:
                 detail["file"] = m.group(1)
-            # 提取行号
-            m = re.search(r""":(\d+)""", issue)
-            if m:
-                detail["line"] = int(m.group(1))
-            # 对应行业标准
-            standards = {
-                "STYLE-01": "PEP 8",
-                "STYLE-02": "PEP 8", "STYLE-03": "PEP 8",
-                "STYLE-04": "框架手册", "STYLE-05": "ISO 25010",
-                "STYLE-06": "NASA Power of 10",
-                "PY-06": "Python 工程规范",
-                "PY-07": "Python 工程规范",
-                "GATE": "CMMI/IEEE/ISO",
-            }
-            for prefix, std in standards.items():
-                if detail["rule"].startswith(prefix.replace("-", "")):
-                    detail["standard"] = std
+                detail["violation"] = f"违反规则 {detail['rule']}: {detail['file']}"
+
+            # 提取行号（排除 .py 后面冒号的情况）
+            file_parts = re.split(r'\.py:(\d+)', issue)
+            if len(file_parts) > 1:
+                detail["line"] = int(file_parts[1])
+
+            # 提取实际值（数字类：实际值 > 标准值）
+            for pattern in [
+                r'(\d+)\s*行\s*>\s*(\d+)',       # "898 行 > 500"
+                r'(\d+)\s*字符\s*>\s*(\d+)',      # "320 字符 > 120"
+                r'(\d+)\s*行\s*>\s*(\d+)',        # "62 行 > 60"
+            ]:
+                m = re.search(pattern, issue)
+                if m:
+                    detail["actual"] = f"{m.group(1)} (标准: {m.group(2)})"
                     break
+
+            # 聚合说明
+            if detail["file"] and detail["line"]:
+                detail["description"] = f"{detail['file']}:{detail['line']} {detail.get('title', '')}"
+            elif detail["file"]:
+                detail["description"] = f"{detail['file']} {detail.get('title', '')}"
+
+            # GATE 类型处理
+            if detail["rule"] == "GATE" and not detail["file"]:
+                # 提取 G5/G6/G8 等
+                g = re.search(r'G(\d+)', issue)
+                if g:
+                    gate_n = int(g.group(1))
+                    detail["violation"] = f"Gate{gate_n}: {issue.split('—')[-1].strip()}"
+                    if "✅" in issue:
+                        detail["severity"] = "INFO"
+                        detail["description"] = issue
+                    elif "WARN" in issue:
+                        detail["severity"] = "WARN"
+                        # 提取标准名
+                        std_m = re.search(r'(CMMI|IEEE|ISO\s*\d+)', issue)
+                        if std_m:
+                            detail["standard"] = std_m.group(1)
+                            detail["fix_hint"] = "按标准要求补充配套措施"
+                    elif "BLOCKER" in issue:
+                        detail["severity"] = "BLOCKER"
+
             details.append(detail)
         return details
 
