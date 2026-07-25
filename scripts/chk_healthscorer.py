@@ -11,7 +11,7 @@
   每个文件需导出 check(config: dict, project_root: str) -> (errors: int, issues: List[str])
   在 review-rules.yaml 中 plugins 段配置启用/禁用。
 """
-import os, json, importlib, importlib.util, sys
+import os, re, json, importlib, importlib.util, sys
 from datetime import datetime
 from typing import List, Tuple
 
@@ -219,7 +219,10 @@ class HealthScorer:
                         checker_results[cid] = {"label": label, "error": "模块不可用"}
                         continue
                     errors, issues = mod.check(instance, self.project_root)
-                    checker_results[cid] = {"label": label, "errors": errors, "issues": issues or []}
+                    checker_results[cid] = {
+                        "label": label, "errors": errors, "issues": issues or [],
+                        "details": self._parse_issue_details(issues or []),
+                    }
                     total_errors += errors
                     all_issues.extend(issues or [])
                 except Exception as e:
@@ -230,7 +233,10 @@ class HealthScorer:
             # Layer A 内置 checker
             try:
                 errors, issues = instance.check()
-                checker_results[cid] = {"label": label, "errors": errors, "issues": issues or []}
+                checker_results[cid] = {
+                    "label": label, "errors": errors, "issues": issues or [],
+                    "details": self._parse_issue_details(issues or []),
+                }
                 total_errors += errors
                 all_issues.extend(issues or [])
             except Exception as e:
@@ -258,6 +264,43 @@ class HealthScorer:
             return None
 
 
+
+    def _parse_issue_details(self, issues: List[str]) -> List[dict]:
+        """从 issue 文本提取结构化信息，供 AI Agent 可编程读取"""
+        details = []
+        for issue in issues:
+            detail = {
+                "rule": "", "file": "", "line": 0,
+                "message": issue, "standard": "",
+            }
+            # 提取规则编号 [STYLE-01], [GATE], [PY-06] 等
+            m = re.match(r'\[([A-Z]+-\d+)\]', issue)
+            if m:
+                detail["rule"] = m.group(1)
+            # 提取文件名 path/file.py
+            m = re.search(r"""([\w\\/.-]+\.py)""", issue)
+            if m:
+                detail["file"] = m.group(1)
+            # 提取行号
+            m = re.search(r""":(\d+)""", issue)
+            if m:
+                detail["line"] = int(m.group(1))
+            # 对应行业标准
+            standards = {
+                "STYLE-01": "PEP 8",
+                "STYLE-02": "PEP 8", "STYLE-03": "PEP 8",
+                "STYLE-04": "框架手册", "STYLE-05": "ISO 25010",
+                "STYLE-06": "NASA Power of 10",
+                "PY-06": "Python 工程规范",
+                "PY-07": "Python 工程规范",
+                "GATE": "CMMI/IEEE/ISO",
+            }
+            for prefix, std in standards.items():
+                if detail["rule"].startswith(prefix.replace("-", "")):
+                    detail["standard"] = std
+                    break
+            details.append(detail)
+        return details
 
     def _detect_environment(self) -> str:
         """自动检测运行环境：production / development / ci"""
