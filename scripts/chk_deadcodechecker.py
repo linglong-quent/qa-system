@@ -15,6 +15,7 @@ References:
 
 import ast
 import os
+import re
 from typing import List, Set, Tuple
 
 
@@ -31,9 +32,9 @@ class DeadCodeChecker:
         ])
         self.entry_points = config.get("entry_points", ["main.py", "app.py", "cli.py"])
 
-    def _collect_py_files(self) -> List[str]:
+    def _collect_py_files(self, dirs: List[str]) -> List[str]:
         files = []
-        for d in self.scan_dirs:
+        for d in dirs:
             full = os.path.join(self.project_root, d)
             if os.path.isdir(full):
                 for root, _dirs, fnames in os.walk(full):
@@ -61,9 +62,16 @@ class DeadCodeChecker:
                         symbols.append(target.id)
         return symbols
 
-    def _extract_all_imports(self, py_files: List[str]) -> Set[str]:
-        """Extract every name imported across all files."""
-        imported = set()
+    def _extract_used_names(self, py_files: List[str]) -> Set[str]:
+        """Extract every referenced name across all files.
+
+        收集范围比"仅 import"更宽, 以消除常见误报:
+        - import / from-import 的名字
+        - 模块内自用 (ast.Name 与 ast.Attribute.attr, 如 ``self.RECORDS.append``)
+        - importlib 字符串模块路径 (api 镜像层 ``_IMPORTS``, ``import_module("a.b.c")``)
+        """
+        used: Set[str] = set()
+        _DOTTED = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$")
         for fpath in py_files:
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
@@ -73,21 +81,37 @@ class DeadCodeChecker:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        imported.add(alias.name.split(".")[0])
+                        used.add(alias.name.split(".")[0])
                 elif isinstance(node, ast.ImportFrom):
                     for alias in node.names:
-                        if alias.asname:
-                            imported.add(alias.asname)
-                        else:
-                            imported.add(alias.name)
-        return imported
+                        used.add(alias.asname or alias.name)
+                elif isinstance(node, ast.Name):
+                    used.add(node.id)
+                elif isinstance(node, ast.Attribute):
+                    used.add(node.attr)
+                elif isinstance(node, ast.Assign):
+                    # __all__ = ["a", "b"] → 显式公开 API, 视为被引用
+                    for target in node.targets:
+                        if (isinstance(target, ast.Name) and target.id == "__all__"
+                                and isinstance(node.value, (ast.List, ast.Tuple))):
+                            for elt in node.value.elts:
+                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                    used.add(elt.value)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    # 点分模块路径的末段: "domain.data.news_event_cache" -> news_event_cache
+                    if _DOTTED.match(node.value):
+                        used.add(node.value.rsplit(".", 1)[-1])
+        return used
 
     def check(self) -> Tuple[int, List[str]]:
         issues: List[str] = []
-        py_files = self._collect_py_files()
+        py_files = self._collect_py_files(self.scan_dirs)
 
-        # Build the set of everything imported anywhere
-        all_imported = self._extract_all_imports(py_files)
+        # 引用收集范围 = 业务扫描目录 + scripts/ + tests/
+        # 业务公共符号可能仅被测试或运维脚本引用, 扫描范围过窄会产生大量误报
+        ref_dirs = list(dict.fromkeys(self.scan_dirs + ["scripts", "tests"]))
+        ref_files = self._collect_py_files(ref_dirs)
+        all_used = self._extract_used_names(ref_files)
 
         # Track global-used names from entry points
         entry_point_imports: Set[str] = set()
@@ -107,7 +131,7 @@ class DeadCodeChecker:
                         for alias in node.names:
                             entry_point_imports.add(alias.asname or alias.name)
 
-        all_imported |= entry_point_imports
+        all_used |= entry_point_imports
 
         # Check each file for orphan public symbols
         for fpath in py_files:
@@ -129,9 +153,9 @@ class DeadCodeChecker:
             for sym in symbols:
                 if sym in self.exempt_names:
                     continue
-                # Check if this symbol is imported anywhere in the project
-                # (excluding the file that defines it)
-                if sym not in all_imported:
+                # Check if this symbol is referenced anywhere in the project
+                # (import / 模块内自用 / 属性访问 / 字符串模块路径)
+                if sym not in all_used:
                     issues.append(
                         f"[DEADCODE-001] {rel} 公共符号 '{sym}' 未被项目引用 "
                         f"-> 孤儿代码增加维护成本，确认无用后应删除或归档"

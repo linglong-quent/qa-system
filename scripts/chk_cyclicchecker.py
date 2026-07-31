@@ -44,7 +44,12 @@ class CyclicImportChecker:
         return name
 
     def _extract_imports(self, fpath: str) -> Set[str]:
-        """Extract direct import targets from a Python file."""
+        """Extract direct import targets from a Python file.
+
+        仅统计**模块顶层** import (含 TYPE_CHECKING 豁免):
+        - 函数/类内部 import 为运行时惰性加载, 不构成模块初始化环
+        - ``if TYPE_CHECKING:`` 块内的 import 仅在类型检查期执行, 非运行时环
+        """
         imports: Set[str] = set()
         try:
             with open(fpath, "r", encoding="utf-8") as f:
@@ -56,26 +61,44 @@ class CyclicImportChecker:
         rel_base = self._module_name(fpath)
         pkg_parts = rel_base.split(".")[:-1]  # parent package
 
-        for node in ast.walk(tree):
+        def _is_type_checking(test: ast.expr) -> bool:
+            """识别 ``if TYPE_CHECKING:`` / ``if typing.TYPE_CHECKING:``。"""
+            if isinstance(test, ast.Name):
+                return test.id == "TYPE_CHECKING"
+            if isinstance(test, ast.Attribute):
+                return test.attr == "TYPE_CHECKING"
+            return False
+
+        def _add_from(node: ast.ImportFrom) -> None:
+            if node.level:  # Relative import
+                from_parts = pkg_parts[:]
+                # node.level counts dots: . = 1, .. = 2, etc.
+                if node.level <= len(pkg_parts):
+                    from_parts = pkg_parts[: len(pkg_parts) - (node.level - 1)]
+                else:
+                    return  # Go beyond root, skip
+                if node.module:
+                    from_parts = from_parts + node.module.split(".")
+                from_module = ".".join(from_parts)
+            else:
+                from_module = node.module or ""
+            if from_module:
+                imports.add(from_module)
+
+        # 仅遍历模块顶层节点: 函数/类内 import 是惰性的, 不算模块初始化依赖
+        for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports.add(alias.name)
             elif isinstance(node, ast.ImportFrom):
-                if node.level:  # Relative import
-                    from_parts = pkg_parts[:]
-                    # node.level counts dots: . = 1, .. = 2, etc.
-                    if node.level <= len(pkg_parts):
-                        from_parts = pkg_parts[: len(pkg_parts) - (node.level - 1)]
-                    else:
-                        continue  # Go beyond root, skip
-                    if node.module:
-                        from_parts = from_parts + node.module.split(".")
-                    from_module = ".".join(from_parts)
-                else:
-                    from_module = node.module or ""
-
-                if from_module:
-                    imports.add(from_module)
+                _add_from(node)
+            elif isinstance(node, ast.If) and _is_type_checking(node.test):
+                # TYPE_CHECKING 块内 import 不构成运行时环
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Import):
+                        continue  # 忽略 TYPE_CHECKING 块内 import
+                    if isinstance(sub, ast.ImportFrom):
+                        continue  # 忽略 TYPE_CHECKING 块内 import
 
         return imports
 

@@ -255,8 +255,14 @@ def main():  # noqa: STYLE-06
     try:
         sys.path.insert(0, scripts_dir)
         from chk_healthscorer import HealthScorer
-        scorer = HealthScorer(base)
-        report = scorer.run_all()
+        # 自检 QA-System 自身: 屏蔽 0-污染环境变量, 避免误扫项目或污染项目 QA 报告
+        _saved_env = {k: os.environ.pop(k) for k in
+                      ("QA_SYSTEM_ROOT", "QA_PROJECT_NAME") if k in os.environ}
+        try:
+            scorer = HealthScorer(base)
+            report = scorer.run_all()
+        finally:
+            os.environ.update(_saved_env)
         check("errors" in report, "HealthScorer.run_all() returns 'errors'")
         check("checkers" in report, "HealthScorer.run_all() returns 'checkers'")
         check(report["errors"] >= 0, f"errors >= 0 (got {report['errors']})")

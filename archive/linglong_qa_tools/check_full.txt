@@ -1,0 +1,24 @@
+﻿============================================================
+  QA Check — 全量检查
+============================================================
+
+结果: 137 个错误, 177 个问题
+  ❌ pandas inplace=True            errors=1
+  ✅ 前视偏差                           errors=0
+  ✅ 硬编码密钥                          errors=0
+  ⏭️  孤儿代码                           (skipped)
+  ✅ 循环导入                           errors=0
+  ❌ 代码禁用规则                         errors=9
+  ✅ 架构边界门禁                         errors=0
+  ⏭️  配置自审                           (skipped)
+  ❌ 代码风格                           errors=127
+  ✅ 项目治理                           errors=0
+  ✅ 安全增强                           errors=0
+  ✅ 文档质量                           errors=0
+  ✅ 零打印                            errors=0
+  ✅ 自定义规则                          errors=0
+  ✅ 熔断检测                           errors=0
+  ✅ 文档一致性                          errors=0
+  ✅ 生产就绪                           errors=0
+  ✅ 质量门控                           errors=0
+  ✅ CLAUDE 验证                      errors=0

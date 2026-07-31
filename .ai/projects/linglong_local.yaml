@@ -1102,8 +1102,6 @@ import_boundary_check:
   - qbstyles
   - matplotlib
   - seaborn
-  # QA 运行时桥接 — domain.decision.review_chain 需联动 QA Gate
-  - scripts.qa_tools._linglong_qa
   max_depth: 5
   # 跨域 import 豁免（架构统一后无需豁免，保留空列表以维持 YAML 锚点）
   import_exempt: &id001 []
