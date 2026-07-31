@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # 昤宝宝可通过 API 远程触发 CI
 
 jobs:
-  "QA Self-Test":
+  self-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
