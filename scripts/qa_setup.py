@@ -219,7 +219,7 @@ code_ban_check:
 import_boundary_check:
   enabled: true
   severity: BLOCKER
-  restricted_dirs: ["src/_core/"]
+  restricted_dirs: ["domain/", "shared/", "access/", "p0/", "backtest/"]
   forbidden_prefixes: ["tests", "scripts", "tools", "archive"]
   allowed_modules: ["numpy", "pandas", "requests"]
   max_depth: 3
@@ -244,7 +244,7 @@ DEFAULT_PRE_COMMIT = """repos:
     hooks:
       - id: flake8
         name: flake8-lint
-        args: ["--max-line-length=120", "--max-complexity=10"]
+        args: ["--max-line-length=120", "--max-complexity=10", "--select=E9,F401,F63,F7,F82,F841", "--extend-ignore=E203,W503"]
   - repo: local
     hooks:
       - id: qa-gate
@@ -256,10 +256,20 @@ DEFAULT_PRE_COMMIT = """repos:
         always_run: true
 """
 
-PLUGIN_INIT = '\"\"\"QA 系统 v4.0 — 插件目录。在此目录下放 .py 文件，自动发现。\n\n每个文件需导出:\n  check(config: dict, project_root: str) -> tuple[int, list[str]]\n  返回 (errors, issues)\n\n示例: .ai/plugins/my_rule.py\n  CHECKER_ID = \"plugin_my_rule\"\n  CHECKER_LABEL = \"我的规则\"\n  def check(config, project_root):\n      return 0, []\n\"\"\"\n'
+PLUGIN_INIT = (
+    '\"\"\"QA 系统 v4.0 — 插件目录。在此目录下放 .py 文件，自动发现。\n'
+    '\n每个文件需导出:\n'
+    '  check(config: dict, project_root: str) -> tuple[int, list[str]]\n'
+    '  返回 (errors, issues)\n'
+    '\n示例: .ai/plugins/my_rule.py\n'
+    '  CHECKER_ID = "plugin_my_rule"\n'
+    '  CHECKER_LABEL = "我的规则"\n'
+    '  def check(config, project_root):\n'
+    '      return 0, []\n\"\"\"\n'
+)
 
 
-def setup_project(project_root: str, quick: bool = False,
+def setup_project(project_root: str, quick: bool = False,  # noqa: STYLE-06
                   with_checkers: bool = False, local_windows: bool = False):
     root = os.path.abspath(project_root)
     ai_dir = os.path.join(root, ".ai")

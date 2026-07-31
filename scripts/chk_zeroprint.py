@@ -3,8 +3,10 @@
 
 通用 QA 能力，从量化 skill_g5_scan 提取。
 """
-import os, re
+import os, re, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class ZeroPrintChecker:
@@ -41,5 +43,6 @@ class ZeroPrintChecker:
                                     issues.append(f"[NOPRINT] {rel}:{lineno} 禁止 print()，使用 logging 替代")
                                     errors += 1
                     except Exception:
+                        logger.warning("读取打印检查文件失败", exc_info=True)
                         continue
         return errors, issues

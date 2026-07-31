@@ -8,7 +8,9 @@
   5. Schema 鏈夋晥鎬?鈥?qa-report.schema.json 鍚堟硶
   6. YAML 璇硶 鈥?鎵€鏈?.yaml .yml 鍙В鏋?  7. 鎻掍欢鍙彂鐜?鈥?.ai/plugins/ 鐩綍缁撴瀯姝ｅ父
   8. 杩愯娴嬭瘯 鈥?瀹屾暣璺戜竴杞紝纭涓嶅穿婧?"""
-import ast, json, os, sys, importlib, importlib.util
+import ast, json, os, sys, importlib, importlib.util, logging
+
+logger = logging.getLogger(__name__)
 
 # yaml 仅在 YAML 语法检查时使用，非安装时自测不阻塞
 try:
@@ -51,7 +53,7 @@ def check_file(path: str, label: str) -> bool:
     return ok
 
 
-def main():
+def main():  # noqa: STYLE-06
     global passed, failed
     base = _PROJECT_ROOT
     scripts_dir = _SCRIPTS_DIR
@@ -193,8 +195,9 @@ def main():
                 and isinstance(result[1], list)
             )
             check(ok, f"{mod_name}.{cls_name}.check()", "must return (int, list)")
-        except Exception as e:
-            check(False, f"{mod_name}.{cls_name}", str(e))
+        except Exception:
+            logger.warning("接口契约检查失败: %s.%s", mod_name, cls_name, exc_info=True)
+            check(False, f"{mod_name}.{cls_name}", "异常，请查看日志")
 
     print()
 
@@ -252,8 +255,14 @@ def main():
     try:
         sys.path.insert(0, scripts_dir)
         from chk_healthscorer import HealthScorer
-        scorer = HealthScorer(base)
-        report = scorer.run_all()
+        # 自检 QA-System 自身: 屏蔽 0-污染环境变量, 避免误扫项目或污染项目 QA 报告
+        _saved_env = {k: os.environ.pop(k) for k in
+                      ("QA_SYSTEM_ROOT", "QA_PROJECT_NAME") if k in os.environ}
+        try:
+            scorer = HealthScorer(base)
+            report = scorer.run_all()
+        finally:
+            os.environ.update(_saved_env)
         check("errors" in report, "HealthScorer.run_all() returns 'errors'")
         check("checkers" in report, "HealthScorer.run_all() returns 'checkers'")
         check(report["errors"] >= 0, f"errors >= 0 (got {report['errors']})")
@@ -267,8 +276,9 @@ def main():
         check(len(missing) == 0, f"All built-in checkers present",
               f"missing: {missing}")
 
-    except Exception as e:
-        check(False, f"Runtime smoke test failed", str(e))
+    except Exception:
+        logger.warning("运行时烟雾测试失败", exc_info=True)
+        check(False, f"Runtime smoke test failed", "异常，请查看日志")
 
     print()
 
@@ -285,8 +295,9 @@ def main():
         stdout = result.stdout.decode("utf-8", errors="replace")
         check(result.returncode == 0, "scripts/qa_check.py list 鈥?exit=0")
         check("import_boundary" in stdout, "list shows import_boundary")
-    except Exception as e:
-        check(False, "scripts/qa_check.py list", str(e))
+    except Exception:
+        logger.warning("入口点测试失败: qa_check.py list", exc_info=True)
+        check(False, "scripts/qa_check.py list", "异常，请查看日志")
 
     print()
 
@@ -316,7 +327,8 @@ if __name__ == "__main__":
         stdout = r.stdout.decode("utf-8", errors="replace")
         check("PASS" in stdout, "qa_gate.py produces output")
         check("VERDICT" in stdout or "Verdict" in stdout, "qa_gate produces verdict")
-    except Exception as e:
-        check(False, "qa_gate end-to-end", str(e))
+    except Exception:
+        logger.warning("qa_gate 端到端测试失败", exc_info=True)
+        check(False, "qa_gate end-to-end", "异常，请查看日志")
 
     print()

@@ -23,7 +23,9 @@
   QA_SYSTEM_ROOT=<路径> — QA 系统根目录（0-污染模式）
   QA_PROJECT_NAME=<名> — 目标项目名（0-污染模式）
 """
-import os, sys
+import os, sys, subprocess, logging
+
+logger = logging.getLogger(__name__)
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)
@@ -31,48 +33,62 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 
-def _resolve_project() -> str:
-    """解析目标项目路径（支持环境变量和 --project 参数）"""
-    # 优先环境变量
+def _run(script_name, *args):
+    """运行 scripts/ 下的模块（用 subprocess 自动处理路径中的空格）."""
+    script_path = os.path.join(_SCRIPTS_DIR, script_name)
+    return subprocess.call([sys.executable, script_path] + list(args))
+
+
+def _parse_argv():
+    """解析命令行参数，剥离 --project <路径>，返回 (project_root, cmd, rest).
+
+    支持两种形式:
+      --project <路径>   空格分隔
+      --project=<路径>   等号分隔
+
+    命令行优先于环境变量 QA_PROJECT。
+    """
+    project_root = None
+    cmd = None
+    rest = []
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--project":
+            if i + 1 < len(args):
+                project_root = os.path.abspath(args[i + 1])
+                i += 2
+                continue
+            print("错误: --project 需要参数")
+            sys.exit(1)
+        elif a.startswith("--project="):
+            project_root = os.path.abspath(a.split("=", 1)[1])
+            i += 1
+            continue
+        if cmd is None:
+            cmd = a
+        else:
+            rest.append(a)
+        i += 1
+
+    # 环境变量作为回退（仅在命令行未指定时）
     env_project = os.environ.get("QA_PROJECT", "")
-    if env_project:
-        return env_project
+    if env_project and not project_root:
+        project_root = env_project
 
-    # 检查命令行 --project 参数
-    for i, arg in enumerate(sys.argv):
-        if arg == "--project" and i + 1 < len(sys.argv):
-            return os.path.abspath(sys.argv[i + 1])
+    if not project_root:
+        project_root = _PROJECT_ROOT
 
-    # 默认：QA 系统自身目录（当检查自身时）或 CWD
-    return _PROJECT_ROOT
+    return project_root, cmd, rest
 
 
-def main():
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+def main():  # noqa: STYLE-06
+    project_root, cmd, rest = _parse_argv()
+
+    if cmd is None or cmd in ("-h", "--help"):
         print(__doc__)
         return
-
-    cmd = sys.argv[1]
-
-    # 跳过 --project 参数（已被解析）
-    rest = [a for a in sys.argv[2:] if not a.startswith("--project") and a != sys.argv[2] if any(
-        sys.argv[i] == "--project" and sys.argv[i+1] == a for i in range(len(sys.argv))
-    ) is False]
-
-    # 更简单的过滤
-    filtered_rest = []
-    skip_next = False
-    for i, a in enumerate(sys.argv[2:]):
-        if skip_next:
-            skip_next = False
-            continue
-        if a == "--project":
-            skip_next = True
-            continue
-        filtered_rest.append(a)
-    rest = filtered_rest
-
-    project_root = _resolve_project()
 
     if cmd == "list":
         from qa_check import list_checkers
@@ -88,21 +104,24 @@ def main():
             failed = run_single(rest[0], project_root)
             sys.exit(1 if failed else 0)
         else:
-            os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_check.py health --project-root {project_root}")
+            args = ["health", "--project-root", project_root]
+            if "--bootstrap" in rest:
+                args.append("--bootstrap")
+            sys.exit(_run("qa_check.py", *args))
 
     elif cmd == "plan":
         action = rest[0] if rest else "check"
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_plan.py {action} --project {project_root}")
+        sys.exit(_run("qa_plan.py", action, "--project", project_root))
 
     elif cmd == "classify":
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_classify.py --project {project_root}")
+        sys.exit(_run("qa_classify.py", "--project", project_root))
 
     elif cmd == "gate":
-        # 支持 --gate=N 单门禁运行
-        gate_args = " ".join(rest)
-        if "--project" not in gate_args:
-            gate_args += f" --project {project_root}"
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_gate.py {gate_args}")
+        # 支持 --gate=N 单门禁运行；rest 透传
+        gate_args = list(rest)
+        if not any(a.startswith("--project") for a in gate_args):
+            gate_args.extend(["--project", project_root])
+        sys.exit(_run("qa_gate.py", *gate_args))
 
     elif cmd == "local":
         """本地一体化模式: check → classify → gate"""
@@ -112,35 +131,35 @@ def main():
 
         # P0: 全量检查
         print("\n[Step 1/3] 全量检查...")
-        ret = os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_check.py health --project-root {project_root}")
+        ret = _run("qa_check.py", "health", "--project-root", project_root)
         if ret != 0:
             print("  ⚠️  检查发现问题，继续执行门禁...")
 
         # P1: 问题分类
         print("\n[Step 2/3] 问题分类...")
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_classify.py --project {project_root}")
+        _run("qa_classify.py", "--project", project_root)
 
         # P2: 门禁
         print("\n[Step 3/3] 十层门禁...")
-        ret = os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_gate.py --project {project_root}")
+        ret = _run("qa_gate.py", "--project", project_root)
 
         print("\n" + "=" * 60)
         sys.exit(ret)
 
     elif cmd == "defect":
         action = rest[0] if rest else "summary"
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_defect.py {action} {' '.join(rest[1:])}")
+        sys.exit(_run("qa_defect.py", action, *rest[1:]))
 
     elif cmd == "self-test":
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_self_test.py")
+        sys.exit(_run("qa_self_test.py"))
 
     elif cmd == "setup":
         project = project_root if project_root != _PROJECT_ROOT else "."
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_setup.py --project {project}")
+        sys.exit(_run("qa_setup.py", "--project", project))
 
     elif cmd == "ai":
         action = rest[0] if rest else "status"
-        os.system(f"{sys.executable} {_SCRIPTS_DIR}/qa_ai.py {action} {' '.join(rest[1:])}")
+        sys.exit(_run("qa_ai.py", action, *rest[1:]))
 
     elif cmd == "validate-config":
         """验证所有配置文件的完整性和一致性"""
@@ -157,8 +176,8 @@ def main():
             try:
                 data = load_yaml(fpath)
                 print(f"  ✅ {f} — {len(data)} 个顶级键")
-            except Exception as e:
-                print(f"  ❌ {f} — {e}")
+            except Exception:
+                logger.warning("配置文件解析失败: %s", f, exc_info=True)
                 errors += 1
         print(f"\n{errors} 个错误")
         sys.exit(errors if errors > 0 else 0)

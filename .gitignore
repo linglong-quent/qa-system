@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -11,6 +11,7 @@ venv/
 .ai/defects/
 .ai/fixes/
 .ai/handoff/
+linglong_local/
 
 # OS
 .DS_Store

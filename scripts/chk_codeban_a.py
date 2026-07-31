@@ -32,7 +32,10 @@ class CodeBanBase:
         self.core_dirs = config.get("core_dirs", [])
         self.path_prefixes = config.get("path_prefixes", [])
         self.magic_whitelist = set(config.get("magic_whitelist", [1, 2, 3, 60, 100, 3600, 86400, 0, -1]))
-        self.magic_keyword_whitelist = config.get("magic_keyword_whitelist", ["_PORT", "_TIMEOUT", "_MAX", "_MIN", "_THRESHOLD", "_SIZE", "_LIMIT", "_COUNT"])
+        self.magic_keyword_whitelist = config.get("magic_keyword_whitelist", [
+            "_PORT", "_TIMEOUT", "_MAX", "_MIN",
+            "_THRESHOLD", "_SIZE", "_LIMIT", "_COUNT"])
+        self.config_file_patterns = config.get("config_file_patterns", ["data_paths", "config", "settings", "constants"])
         self.SQL_KEYWORDS = config.get("sql_keywords", CodeBanBase.SQL_KEYWORDS)
 
     def _collect_py_files(self) -> List[str]:
@@ -63,11 +66,16 @@ class CodeBanBase:
             return compile(f.read(), file_path, "exec", ast.PyCF_ONLY_AST)
 
     def _is_in_main_block(self, node) -> bool:
-        for parent in ast.walk(node):
-            if isinstance(parent, ast.If) and hasattr(parent, "test"):
-                if isinstance(parent.test, ast.Compare) and hasattr(parent.test, "left"):
-                    if isinstance(parent.test.left, ast.Name) and parent.test.left.id == "__name__":
+        current = node
+        while current is not None:
+            if isinstance(current, ast.If):
+                test = current.test
+                if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq):
+                    if isinstance(test.left, ast.Name) and test.left.id == "__name__":
                         return True
+                    if len(test.comparators) >= 1 and isinstance(test.comparators[0], ast.Name) and test.comparators[0].id == "__name__":
+                        return True
+            current = getattr(current, "parent", None)
         return False
 
     def _annotate_parents(self, tree):

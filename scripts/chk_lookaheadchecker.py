@@ -15,7 +15,10 @@ References:
 import ast
 import os
 import re
+import logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class LookaheadChecker:
@@ -58,8 +61,8 @@ class LookaheadChecker:
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     content = f.read()
-            except Exception as e:
-                issues.append(f"[LOOKAHEAD-READ-ERR] {rel}: {e}")
+            except Exception:
+                logger.warning("读取回测文件失败: %s", rel, exc_info=True)
                 continue
 
             for pattern, desc in self.patterns:

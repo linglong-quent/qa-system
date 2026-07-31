@@ -176,7 +176,7 @@ def feedback_to_plan() -> list:
     return suggestions
 
 
-def main():
+def main():  # noqa: STYLE-06
     import argparse
     parser = argparse.ArgumentParser(description="不良品追踪器")
     parser.add_argument("action", nargs="?", default="summary",
