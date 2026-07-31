@@ -14,7 +14,10 @@ References:
 
 import os
 import re
+import logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class SecretChecker:
@@ -24,7 +27,8 @@ class SecretChecker:
     SECRET_PATTERNS = [
         (re.compile(r'(?i)(password|passwd|pwd)\s*[:=]\s*["\'](?!.*\$\{.*\})(?!.*<YOUR).+?["\']'), "硬编码密码"),
         (re.compile(r'(?i)(secret|api_key|apikey|api\.key)\s*[:=]\s*["\'](?!.*\$\{.*\})(?!.*<YOUR).{8,}["\']'), "硬编码密钥/API Key"),
-        (re.compile(r'(?i)(token|access_token|auth_token|bearer)\s*[:=]\s*["\'](?!.*\$\{.*\})(?!.*<YOUR).{8,}["\']'), "硬编码 Token"),
+        (re.compile(r'(?i)(token|access_token|auth_token|bearer)\s*[:=]\s*'
+                    r'["\'](?!.*\$\{.*\})(?!.*<YOUR).{8,}["\']'), "硬编码 Token"),
         (re.compile(r'(?i)(private_key|privatekey|secret_key|secretkey)\s*[:=]\s*["\'](?!.*\$\{.*\}).+?["\']'), "硬编码私钥"),
         (re.compile(r'-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'), "嵌入 PEM 私钥"),
         (re.compile(r'(?i)(jwt|jwe|jws)\s*=\s*["\'][\w-]+\.[\w-]+\.[\w-]+["\']'), "硬编码 JWT Token"),
@@ -79,6 +83,7 @@ class SecretChecker:
                         with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
                             lines = f.readlines()
                     except Exception:
+                        logger.warning("读取密钥扫描文件失败: %s", fpath, exc_info=True)
                         continue
 
                     scanned += 1

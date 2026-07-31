@@ -8,7 +8,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)
 
 
-def generate(report: dict, output_path: str = "") -> str:
+def generate(report: dict, output_path: str = "") -> str:  # noqa: STYLE-06
     if not output_path:
         output_path = os.path.join(_PROJECT_ROOT, ".ai/logs/dashboard.html")
 
@@ -26,7 +26,9 @@ def generate(report: dict, output_path: str = "") -> str:
         status = "✅" if err == 0 else "❌"
         color = "#4ade80" if err == 0 else "#f87171"
         bar = "<div class='bar' style='width:" + str(max(5, 100 - err * 10)) + "%;background:" + color + "'></div>"
-        rows += f"<tr><td>{label}</td><td>{status}</td><td>{err}</td><td>{len(data.get('issues',[]))}</td><td class='m'>{bar}</td></tr>\n"
+        rows += (f"<tr><td>{label}</td><td>{status}</td><td>{err}</td>"
+                 f"<td>{len(data.get('issues',[]))}</td>"
+                 f"<td class='m'>{bar}</td></tr>\n")
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -54,10 +56,18 @@ th{{color:#64748b;font-weight:500}}
 <p class='sub'>{ts} | {report.get('profile','full')} mode | {report.get('project_root','')}</p>
 
 <div class='grid'>
-  <div class='card'><div class='n {chr(103)+chr(111)+chr(111)+chr(100) if score >= 80 else "warn" if score >= 50 else "bad"}'>{score}</div><div class='l'>Quality Score</div></div>
-  <div class='card'><div class='n {"good" if report.get("errors",0)==0 else "bad"}'>{report.get("errors",0)}</div><div class='l'>Errors</div></div>
+  <div class='card'>\
+<div class='n {chr(103)+chr(111)+chr(111)+chr(100) if score >= 80 else "warn" if score >= 50 else "bad"}'>\
+{score}</div>\
+<div class='l'>Quality Score</div></div>
+  <div class='card'>\
+<div class='n {"good" if report.get("errors",0)==0 else "bad"}'>{report.get("errors",0)}</div>\
+<div class='l'>Errors</div></div>
   <div class='card'><div class='n'>{report.get("total_issues",0)}</div><div class='l'>Issues</div></div>
-  <div class='card'><div class='n {"good" if not report.get("blocked",True) else "bad"}'>{chr(9989) if not report.get("blocked",True) else "DENY"}</div><div class='l'>Gate</div></div>
+  <div class='card'>\
+<div class='n {"good" if not report.get("blocked",True) else "bad"}'>\
+{chr(9989) if not report.get("blocked",True) else "DENY"}</div>\
+<div class='l'>Gate</div></div>
 </div>
 
 <table>

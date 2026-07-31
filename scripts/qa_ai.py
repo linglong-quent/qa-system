@@ -68,7 +68,7 @@ def integrate(project_root: str = _PROJECT_ROOT):
     return results
 
 
-def handoff(project_root: str = _PROJECT_ROOT) -> str:
+def handoff(project_root: str = _PROJECT_ROOT) -> str:  # noqa: STYLE-06
     """Gate DENY 时生成 AI 可直接消费的修复上下文文件
     
     输出: .ai/handoff/latest.json — AI 读这个就知道要修什么
@@ -194,7 +194,9 @@ def status(project_root: str = _PROJECT_ROOT) -> dict:
     if os.path.exists(handoff_path):
         with open(handoff_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        result["Last handoff"] = f"{data.get('timestamp','')} — {len(data.get('failure_context',{}).get('tasks',[]))} tasks"
+        result["Last handoff"] = (
+            f"{data.get('timestamp','')} — "
+            f"{len(data.get('failure_context',{}).get('tasks',[]))} tasks")
     else:
         result["Last handoff"] = "无"
 

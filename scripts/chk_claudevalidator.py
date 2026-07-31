@@ -11,8 +11,10 @@ CLAUDE.md 是 AI 编码助手的约束文件，定义了代码规范。
 不检查代码本身（那是其他 checker 的工作）。
 检查的是 CLAUDE.md → checker 映射关系的一致性。
 """
-import os, re
+import os, re, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeValidator:
@@ -36,14 +38,28 @@ class ClaudeValidator:
 
     def __init__(self, config: dict, project_root: str):
         self.project_root = os.path.abspath(project_root)
+        self.claude_paths = config.get("claude_paths", [
+            ".ai/prompts/CLAUDE.md",
+            "CLAUDE.md",
+            ".github/CLAUDE.md",
+            "docs/CLAUDE.md",
+        ])
+
+    def _find_claude_md(self) -> str | None:
+        """在多个候选路径中查找 CLAUDE.md"""
+        for rel_path in self.claude_paths:
+            full_path = os.path.join(self.project_root, rel_path)
+            if os.path.exists(full_path):
+                return full_path
+        return None
 
     def check(self) -> Tuple[int, List[str]]:
         issues = []
         errors = 0
 
         # 1. CLAUDE.md 是否存在
-        claude_path = os.path.join(self.project_root, ".ai/prompts/CLAUDE.md")
-        if not os.path.exists(claude_path):
+        claude_path = self._find_claude_md()
+        if not claude_path:
             issues.append("[CLAUDE] ❌ CLAUDE.md 不存在 — AI 编码无约束")
             return 1, issues
 
@@ -64,7 +80,7 @@ class ClaudeValidator:
                     report = json.load(f)
                 active_checkers = set(report.get("checkers", {}).keys())
             except Exception:
-                pass
+                logger.warning("无法读取 QA 报告 %s", report_path, exc_info=True)
 
         for rule_name, expected_checker in self.RULE_CHECKER_MAP:
             # 检查 CLAUDE.md 是否提及此规则

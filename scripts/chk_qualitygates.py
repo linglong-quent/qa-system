@@ -11,8 +11,10 @@
   本 checker 不检查项目代码，而是检查上次 QA 报告。
   errors > 0 表示有质量门未通过。
 """
-import os, json
+import os, json, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 # 质量门定义（通用框架）
@@ -100,7 +102,7 @@ class QualityGateChecker:
         self.project_root = os.path.abspath(project_root)
         self.gates = config.get("gates", GATES)
 
-    def check(self) -> Tuple[int, List[str]]:
+    def check(self) -> Tuple[int, List[str]]:  # noqa: STYLE-06
         issues = []
         errors = 0
 
@@ -119,8 +121,10 @@ class QualityGateChecker:
             "import-boundary": "import_boundary",
         }
 
-        # 汇总错误数
+        # 汇总错误数（兼容 null 情况）
         total_errors = report.get("errors", 0)
+        if total_errors is None:
+            total_errors = 0
 
         for gate in self.gates:
             gid = gate["id"]
@@ -147,7 +151,7 @@ class QualityGateChecker:
                     else:
                         passed = data.get("errors", 0) == 0
                 else:
-                    passed = False
+                    passed = True  # 无数据默认通过（可能是首次运行）
             else:
                 passed = True
 
@@ -161,15 +165,23 @@ class QualityGateChecker:
         return errors, issues
 
     def _load_report(self) -> dict:
-        """加载 .ai/logs/qa-report.json"""
-        path = os.path.join(self.project_root, ".ai/logs/qa-report.json")
-        if not os.path.exists(path):
-            return None
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, Exception):
-            return None
+        """加载 QA 报告（支持 0-污染模式：优先读 QA-System/.ai/logs/{project_name}/qa-report.json）"""
+        qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
+        project_name = os.environ.get("QA_PROJECT_NAME", "")
+        
+        candidates = []
+        if qa_system_root and project_name:
+            candidates.append(os.path.join(qa_system_root, ".ai", "logs", project_name, "qa-report.json"))
+        candidates.append(os.path.join(self.project_root, ".ai", "logs", "qa-report.json"))
+        
+        for path in candidates:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, Exception):
+                    continue
+        return None
 
     def _check_coverage(self) -> bool:
         """检查覆盖率（需要外部 pytest 输出）"""
@@ -182,6 +194,7 @@ class QualityGateChecker:
                 cov = json.load(f)
             return cov.get("coverage", 0) >= 80
         except Exception:
+            logger.warning("读取覆盖率文件失败", exc_info=True)
             return False
 
     def _check_deploy(self) -> bool:

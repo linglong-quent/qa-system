@@ -9,8 +9,10 @@
   - 文档健康
   - 编码合规（UTF-8, 无 BOM）
 """
-import os
+import os, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class GovernanceChecker:
@@ -22,8 +24,14 @@ class GovernanceChecker:
         self.expected_structure = config.get("expected_dirs",
                                               ["src/", "tests/", "docs/", "scripts/"])
         self.strict_python = config.get("strict_python_struct", True)
+        self.exclude_dirs = set(config.get("exclude_dirs",
+            [".git", ".venv", "venv", "env", "__pycache__",
+             "node_modules", ".mypy_cache", ".ruff_cache",
+             ".pytest_cache"]))
+        self.top_allowed_extra = set(config.get("top_allowed_extra", []))
+        self.top_file_threshold = config.get("top_file_threshold", 20)
 
-    def check(self) -> Tuple[int, List[str]]:
+    def check(self) -> Tuple[int, List[str]]:  # noqa: STYLE-06
         issues = []
         errors = 0
 
@@ -94,6 +102,7 @@ class GovernanceChecker:
             ".python-version", ".gitattributes",
             "CLAUDE.md", "SOUL.md",
         }
+        top_allowed |= self.top_allowed_extra
         top_dir = self.project_root
         top_items = [
             f for f in os.listdir(top_dir)
@@ -101,13 +110,14 @@ class GovernanceChecker:
             and not f.startswith(".")
             and f not in top_allowed
         ]
-        if len(top_items) > 20:
+        if len(top_items) > self.top_file_threshold:
             issues.append(f"[GOV-02] 顶层目录文件过多 ({len(top_items)} 个)，建议移入子目录")
             errors += 1
 
         # ── 4. __pycache__ 清理检查 ──
         pycache_count = 0
         for root, dirs, files in os.walk(self.project_root):
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
             pycache_count += dirs.count("__pycache__")
         if pycache_count > 10:
             issues.append(f"[GOV-03] 发现 {pycache_count} 个 __pycache__ 目录，建议清理并加入 .gitignore")
@@ -117,8 +127,7 @@ class GovernanceChecker:
         bom_count = 0
         py_files_found = 0
         for root, dirs, files in os.walk(self.project_root):
-            if "__pycache__" in root or ".git" in root:
-                continue
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
             for f in files:
                 if not f.endswith(".py"):
                     continue
@@ -135,7 +144,7 @@ class GovernanceChecker:
                             issues.append(f"[ENC-01] {rel} 包含 UTF-8 BOM（应使用无 BOM UTF-8）")
                             errors += 1
                 except Exception:
-                    pass
+                    logger.warning("读取文件失败: %s", fpath, exc_info=True)
 
         if py_files_found == 0:
             issues.append("[PY-08] 项目不含任何 .py 文件")
@@ -144,8 +153,7 @@ class GovernanceChecker:
         # ── 6. __init__.py 覆盖检查 ──
         pkg_dirs_without_init = 0
         for root, dirs, files in os.walk(self.project_root):
-            if "__pycache__" in root or ".git" in root:
-                continue
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
             for d in dirs:
                 dpath = os.path.join(root, d)
                 is_python_pkg = any(

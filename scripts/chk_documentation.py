@@ -3,8 +3,10 @@
 
 从量化项目 ai-doc-build/ai-doc-generate/ai-doc-scan 提取通用模式。
 """
-import os, json
+import os, json, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentationChecker:
@@ -45,6 +47,7 @@ class DocumentationChecker:
                     issues.append(f"[DOC-03] {rel}: 文档缺少标题 (# Title)")
                     errors += 1
             except Exception:
+                logger.warning("读取文档文件失败: %s", fpath, exc_info=True)
                 continue
 
         # WORM 归档合规（docs/ 内必须纯 md，无二进制）

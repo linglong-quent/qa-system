@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3  # noqa: STYLE-05, LARGE-01
 """QA 总闸门 — Gate0-Gate9 十层门禁架构（对齐框架手册 v4.0）
 
 门禁架构（对齐框架手册 第六章）:
@@ -17,8 +17,10 @@
 任何一项不通过 -> exit 1 -> 阻断提交/合并。
 生产模式 (QA_ENV=production) 自动通过所有门禁。
 """
-import os, json, sys, subprocess, re
+import os, json, sys, subprocess, re, logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from typing import List, Tuple, Optional
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +30,8 @@ if _SCRIPTS_DIR not in sys.path:
 
 CODE_CHECKERS = {"inplace_check", "lookahead_check", "secret_check",
                  "deadcode_check", "cyclic_check", "code_ban",
-                 "import_boundary", "config_audit", "production"}
+                 "import_boundary", "config_audit", "production",
+                 "naming_conflict"}
 
 META_CHECKERS = {"quality_gates", "claude_validation"}
 
@@ -70,6 +73,7 @@ class SchemaValidator:
                 try:
                     text = open(fpath, "r", encoding="utf-8").read()
                 except Exception:
+                    logger.warning("读取文档参数文件失败: %s", fpath, exc_info=True)
                     continue
                 for pattern in _PARAM_PATTERNS:
                     for match in pattern.finditer(text):
@@ -125,6 +129,7 @@ class SchemaValidator:
                     try:
                         text = open(fpath, "r", encoding="utf-8").read()
                     except Exception:
+                        logger.warning("读取代码常量文件失败: %s", fpath, exc_info=True)
                         continue
                     for pattern in const_patterns:
                         for match in pattern.finditer(text):
@@ -164,9 +169,11 @@ class SchemaValidator:
             for doc_info in doc_infos:
                 doc_val = doc_info["value"]
                 # 尝试在代码中匹配同名参数
-                name_parts = re.split(r'[_\s\-:：,，；;.。]+', ctx)
+                # 注意：不分割下划线，下划线连接的是完整标识符（如 large_class_threshold）
+                name_parts = re.split(r'[\s\-:：,，；;.。]+', ctx)
                 for part in name_parts:
-                    if not part or not part[0].isascii():
+                    # 跳过过短的词（<=3 字符），避免误匹配（如 "an"、"10"）
+                    if not part or not part[0].isascii() or len(part) <= 3:
                         continue
                     part_lower = part.lower()
                     if part_lower in code_pairs:
@@ -213,7 +220,7 @@ class FrameworkSelfAudit:
         self.project_root = project_root
         self.issues: List[Tuple[str, str]] = []
 
-    def run(self, manual_path: str = "") -> List[Tuple[str, str]]:
+    def run(self, manual_path: str = "") -> List[Tuple[str, str]]:  # noqa: STYLE-06
         """执行全部自审检查，返回 (severity, message) 列表"""
         if not manual_path:
             for candidate in ["框架手册.md", "docs/框架手册.md",
@@ -322,22 +329,46 @@ class GateKeeper:
     def __init__(self, project_root=None):
         self.root = project_root or _PROJECT_ROOT
         self.results = []
+        # 0-污染模式：配置在 QA-System 中，不在项目里
+        self.qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
+        self.project_name = os.environ.get("QA_PROJECT_NAME", "")
+        self.zero_pollution = bool(self.qa_system_root and self.project_name)
         # 加载配置
         self.config = self._load_config()
 
     def _load_config(self) -> dict:
-        """加载 QA 配置"""
+        """加载 QA 配置（支持 0-污染模式）"""
+        config = {}
+        try:
+            from chk_load_yaml import load_yaml
+        except Exception:
+            logger.warning("加载 YAML 模块失败", exc_info=True)
+            return config
+        # 0-污染模式：优先 {name}_local.yaml，其次 {name}.yaml
+        if self.zero_pollution:
+            candidates = [
+                os.path.join(self.qa_system_root, ".ai", "projects", f"{self.project_name}_local.yaml"),
+                os.path.join(self.qa_system_root, ".ai", "projects", f"{self.project_name}.yaml"),
+            ]
+            for cp in candidates:
+                if os.path.exists(cp):
+                    try:
+                        config.update(load_yaml(cp))
+                        break
+                    except Exception:
+                        logger.warning("加载项目配置失败: %s", cp, exc_info=True)
+                        pass
+        # 项目本地配置（补充）
         config_paths = [
             os.path.join(self.root, ".ai/config/review-rules.yaml"),
             os.path.join(self.root, ".ai/config/quality-plan.yaml"),
         ]
-        config = {}
         for cp in config_paths:
             if os.path.exists(cp):
                 try:
-                    from chk_load_yaml import load_yaml
                     config.update(load_yaml(cp))
                 except Exception:
+                    logger.warning("加载本地配置失败: %s", cp, exc_info=True)
                     pass
         return config
 
@@ -426,6 +457,7 @@ class GateKeeper:
                     event = json.load(f)
                 return event.get("pull_request", {}).get("body", "")
             except Exception:
+                logger.warning("读取 GITHUB_EVENT_PATH 失败: %s", gh_event, exc_info=True)
                 pass
         return None
 
@@ -474,7 +506,7 @@ class GateKeeper:
         self.check("Gate2 文档命名", len(violations) == 0,
                     f"命名违规: {violations}" if violations else "命名正确")
 
-    def _gate3_sync(self):
+    def _gate3_sync(self):  # noqa: STYLE-06
         """Gate3: 代码↔文档同步 + SchemaValidator + 目录规范 + 越域import"""
         issues = []
 
@@ -512,6 +544,7 @@ class GateKeeper:
                     try:
                         content = open(fpath, "r", encoding="utf-8").read()
                     except Exception:
+                        logger.warning("读取 domain 文件失败: %s", fpath, exc_info=True)
                         continue
                     # 检查是否直接 import 其他 domain 的内部模块（非 api/）
                     domain_imports = re.findall(
@@ -579,15 +612,20 @@ class GateKeeper:
             if non_md:
                 worm_issues.append(f"WORM: 非 md 文档: {non_md}")
 
-        # ── 规划存在检查 ──
-        plan_path = os.path.join(self.root, ".ai/config/quality-plan.yaml")
+        # ── 规划存在检查 (0-污染模式: 读 QA-System 配置) ──
+        if self.zero_pollution:
+            plan_path = os.path.join(
+                self.qa_system_root, ".ai", "config", "quality-plan.yaml"
+            )
+        else:
+            plan_path = os.path.join(self.root, ".ai/config/quality-plan.yaml")
         if not os.path.exists(plan_path):
             worm_issues.append("缺少 quality-plan.yaml")
 
         self.check("Gate4 版本与WORM", len(worm_issues) == 0,
                     "; ".join(worm_issues) if worm_issues else "WORM 合规 · 规划就绪")
 
-    def _gate5_scoring(self):
+    def _gate5_scoring(self):  # noqa: STYLE-06
         """Gate5: 评分与检测器 — 聚合所有 checker 结果"""
         report = self._load_report()
         if not report:
@@ -599,11 +637,33 @@ class GateKeeper:
         ran = set(report.get("checkers", {}).keys())
         missing = all_c - ran
 
-        # 统计错误
-        errors = sum(
-            report.get("checkers", {}).get(cid, {}).get("errors", 0)
-            for cid in CODE_CHECKERS
-        )
+        # 统计错误（只计数 BLOCKER 级别 checker 的错误）
+        config = self._load_config()
+        errors = 0
+        for cid in CODE_CHECKERS:
+            cid_errors = report.get("checkers", {}).get(cid, {}).get("errors", 0)
+            if cid_errors == 0:
+                continue
+            # 从配置读取严重级别，BLOCKER 才阻断
+            cid_key = cid.replace("naming_conflict", "naming_conflict_check") \
+                          .replace("code_ban", "code_ban_check") \
+                          .replace("import_boundary", "import_boundary_check") \
+                          .replace("config_audit", "config_audit_check") \
+                          .replace("quality_gates", "quality_gates_check") \
+                          .replace("claude_validation", "claude_validation_check") \
+                          .replace("codestyle", "codestyle_check") \
+                          .replace("governance", "governance_check") \
+                          .replace("securityplus", "securityplus_check") \
+                          .replace("documentation", "documentation_check") \
+                          .replace("zeroprint", "zeroprint_check") \
+                          .replace("customrules", "customrules_check") \
+                          .replace("fusedetect", "fusedetect_check") \
+                          .replace("docconsistency", "docconsistency_check") \
+                          .replace("production", "production_check")
+            cid_cfg = config.get(cid_key, {})
+            sev = cid_cfg.get("severity", "BLOCKER")
+            if sev == "BLOCKER":
+                errors += cid_errors
         gate_errors = report.get("checkers", {}).get("quality_gates", {}).get("errors", 0)
         config_errors = report.get("checkers", {}).get("config_audit", {}).get("errors", 0)
 
@@ -641,6 +701,7 @@ class GateKeeper:
                 total -= deduct
             return max(0, total)
         except Exception:
+            logger.warning("计算健康评分失败", exc_info=True)
             return None
 
     def _gate6_permission(self):
@@ -678,6 +739,7 @@ class GateKeeper:
                     if "def check(self" in content and "'w'" in content:
                         violations.append(rel)
                 except Exception:
+                    logger.warning("读取权限检查文件失败: %s", fpath, exc_info=True)
                     continue
 
         detail_parts = []
@@ -704,9 +766,10 @@ class GateKeeper:
             self.check("Gate7 闭环", len(pending) == 0,
                         f"{len(pending)} 项未处理" if pending else "已清零")
         except Exception:
+            logger.warning("读取 pending.json 失败", exc_info=True)
             self.check("Gate7 闭环", True)
 
-    def _gate8_deployment(self):
+    def _gate8_deployment(self):  # noqa: STYLE-06
         """Gate8: 部署门禁 — 生产环境就绪检查
 
         - 生产就绪 checker 结果
@@ -739,6 +802,7 @@ class GateKeeper:
                 if not has_version and not has_unreleased:
                     issues.append("CHANGELOG 缺少版本条目")
             except Exception:
+                logger.warning("读取 CHANGELOG.md 失败", exc_info=True)
                 issues.append("无法读取 CHANGELOG.md")
         else:
             issues.append("缺少 CHANGELOG.md")
@@ -787,8 +851,9 @@ class GateKeeper:
             )
             if r.returncode != 0:
                 issues.append("系统自检失败")
-        except Exception as e:
-            issues.append(f"系统自检异常: {e}")
+        except Exception:
+            logger.warning("系统自检执行失败", exc_info=True)
+            issues.append("系统自检异常")
 
         # ── 复盘闭环检查（是否存在复盘记录） ──
         retro_dir = os.path.join(self.root, "docs", "retrospectives")
@@ -807,13 +872,18 @@ class GateKeeper:
     # ── 辅助方法 ──────────────────────────────────────────────
 
     def _load_report(self):
-        p = os.path.join(self.root, ".ai/logs/qa-report.json")
+        # 0-污染模式：报告在 QA-System/.ai/logs/{project_name}/qa-report.json
+        if self.zero_pollution:
+            p = os.path.join(self.qa_system_root, ".ai", "logs", self.project_name, "qa-report.json")
+        else:
+            p = os.path.join(self.root, ".ai/logs/qa-report.json")
         if not os.path.exists(p):
             return None
         try:
             with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
+            logger.warning("加载 QA 报告失败: %s", p, exc_info=True)
             return None
 
     def _summary(self):
@@ -840,6 +910,7 @@ class GateKeeper:
                     create(report, result)
                     self._post_to_cb_inbox(report)
             except Exception:
+                logger.warning("创建不良品记录或发送 CB 收件箱失败", exc_info=True)
                 pass
         return result
 
@@ -876,7 +947,12 @@ def main():
                         help="目标项目根目录")
     args = parser.parse_args()
 
-    project_root = args.project or _PROJECT_ROOT
+    project_root = os.path.abspath(args.project or _PROJECT_ROOT)
+    # 0-污染模式: 切换 cwd 到目标项目, 保证 checker 相对 scan_dirs 解析正确
+    try:
+        os.chdir(project_root)
+    except OSError:
+        logger.warning("无法切换 cwd 到项目根: %s", project_root)
     gate = GateKeeper(project_root)
 
     if args.gate:

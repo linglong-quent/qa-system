@@ -3,8 +3,10 @@
 
 通用 QA 能力，从量化 skill_g5a_scan 提取。
 """
-import os, re
+import os, re, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class CustomRulesChecker:
@@ -37,6 +39,7 @@ class CustomRulesChecker:
                     try:
                         content = open(fpath, "r", encoding="utf-8").read()
                     except Exception:
+                        logger.warning("读取文件失败: %s", fpath, exc_info=True)
                         continue
                     for rule in self.rules:
                         pattern = rule.get("pattern", "")

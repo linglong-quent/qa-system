@@ -25,6 +25,19 @@ class ConfigAuditChecker:
         self.project_root = os.path.abspath(project_root)
         self.config_dir = os.path.join(self.project_root, ".ai", "config")
         self.issues: List[str] = []
+        # 0-污染模式：配置在 QA-System 中，不在项目里
+        self.qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
+        self.project_name = os.environ.get("QA_PROJECT_NAME", "")
+        self.zero_pollution = bool(self.qa_system_root and self.project_name)
+        if self.zero_pollution:
+            # 优先 {name}_local.yaml，其次 {name}.yaml
+            candidates = [
+                os.path.join(self.qa_system_root, ".ai", "projects", f"{self.project_name}_local.yaml"),
+                os.path.join(self.qa_system_root, ".ai", "projects", f"{self.project_name}.yaml"),
+            ]
+            self.rules_path = next((cp for cp in candidates if os.path.exists(cp)), candidates[0])
+        else:
+            self.rules_path = os.path.join(self.config_dir, "review-rules.yaml")
 
     def check(self) -> Tuple[int, List[str]]:
         """执行配置审计检查"""
@@ -65,8 +78,8 @@ class ConfigAuditChecker:
         return errors, issues
 
     def _check_checker_consistency(self) -> Tuple[int, List[str]]:
-        """review-rules.yaml 中的 checker 引用是否有对应模块"""
-        rules_path = os.path.join(self.config_dir, "review-rules.yaml")
+        """核心配置（review-rules.yaml 或 0-污染模式的 *_local.yaml）中的 checker 引用是否有对应模块"""
+        rules_path = self.rules_path
         if not os.path.exists(rules_path):
             return 0, []
         config = load_yaml(rules_path)
@@ -84,12 +97,17 @@ class ConfigAuditChecker:
             "code_ban_check": "chk_codebanchecker",
             "import_boundary_check": "chk_importboundary",
         }
-        scripts_dir = os.path.join(self.project_root, "scripts")
+        # scripts/ 在 QA-System 中（0-污染模式或 QA_SYSTEM_ROOT 已指定），否则在项目根
+        # 检查器脚本属于 QA-System 而非被测项目，因此只要 QA_SYSTEM_ROOT 可用即优先使用其 scripts/
+        scripts_dir = (os.path.join(self.qa_system_root, "scripts")
+                       if self.qa_system_root
+                       else os.path.join(self.project_root, "scripts"))
+        config_label = os.path.basename(rules_path)
         for config_key, module_name in checker_module_map.items():
             section = config.get(config_key)
             if section is None:
                 errors += 1
-                issues.append(f"[CONFIG-AUDIT] review-rules.yaml 缺少 '{config_key}' 段")
+                issues.append(f"[CONFIG-AUDIT] {config_label} 缺少 '{config_key}' 段")
                 continue
             mod_path = os.path.join(scripts_dir, f"{module_name}.py")
             if not os.path.exists(mod_path):

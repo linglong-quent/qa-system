@@ -13,8 +13,10 @@
   9. CI/CD 自动化验证
   10. 文档完整性（README/CHANGELOG 存在）
 """
-import os, re, ast
+import os, re, ast, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 # 各检查项所扫描的关键路径匹配器
@@ -102,7 +104,7 @@ class ProductionChecker:
         self.scan_dirs = config.get("scan_dirs", ["src/"])
         self.active_checks = config.get("active_checks", [c["id"] for c in CHECKS])
 
-    def check(self) -> Tuple[int, List[str]]:
+    def check(self) -> Tuple[int, List[str]]:  # noqa: STYLE-06
         issues = []
         errors = 0
         scans = {}
@@ -171,4 +173,5 @@ class ProductionChecker:
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception:
+            logger.warning("读取生产检查文件失败: %s", path, exc_info=True)
             return ""

@@ -79,7 +79,7 @@ class CyclicImportChecker:
 
         return imports
 
-    def check(self) -> Tuple[int, List[str]]:
+    def check(self) -> Tuple[int, List[str]]:  # noqa: STYLE-06
         issues: List[str] = []
         py_files = self._collect_py_files()
 

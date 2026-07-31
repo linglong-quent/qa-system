@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3  # noqa: STYLE-05, LARGE-01
 """QA System Core — HealthScorer V3.0 (with plugin support)
 
 架构（三层合一）:
@@ -11,9 +11,11 @@
   每个文件需导出 check(config: dict, project_root: str) -> (errors: int, issues: List[str])
   在 review-rules.yaml 中 plugins 段配置启用/禁用。
 """
-import os, re, json, importlib, importlib.util, sys
+import os, re, json, logging, importlib, importlib.util, sys
 from datetime import datetime
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 from chk_load_yaml import load_yaml
 
@@ -29,6 +31,7 @@ from chk_configauditchecker import ConfigAuditChecker
 from chk_qualitygates import QualityGateChecker
 from chk_claudevalidator import ClaudeValidator
 from chk_codestyle import CodeStyleChecker
+from chk_largefiles import LargeFilesChecker
 from chk_governance import GovernanceChecker
 from chk_securityplus import SecurityPlusChecker
 from chk_documentation import DocumentationChecker
@@ -37,23 +40,36 @@ from chk_zeroprint import ZeroPrintChecker
 from chk_customrules import CustomRulesChecker
 from chk_fusedetector import FuseDetectorChecker
 from chk_docconsistency import DocConsistencyChecker
+from chk_namingconflict import NamingConflictChecker
 
 
 class HealthScorer:
     """QA 系统核心评分引擎 — V3.0 0-污染模式"""
 
-    def __init__(self, project_root: str, bootstrap: bool = False, profile: str = "",
+    def __init__(self, project_root: str, bootstrap: bool = False, profile: str = "",  # noqa: STYLE-06
                  qa_system_root: str = "", project_name: str = ""):
         self.project_root = os.path.abspath(project_root)
         self.qa_system_root = qa_system_root or os.environ.get("QA_SYSTEM_ROOT", "")
         self.project_name = project_name or os.environ.get("QA_PROJECT_NAME", "")
 
         # 0-污染模式：配置在 QA 系统中，不在项目里
+        # 优先查找 .ai/projects/{name}_local.yaml（0-污染模式标准命名）
+        # 其次查找 .ai/projects/{name}.yaml（向后兼容）
         config_path = ""
         if self.qa_system_root and self.project_name:
-            config_path = os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}.yaml")
-            if not os.path.exists(config_path):
-                config_path = os.path.join(self.qa_system_root, ".ai/config/review-rules.yaml")
+            candidates = [
+                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}_local.yaml"),
+                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}.yaml"),
+            ]
+            for cp in candidates:
+                if os.path.exists(cp):
+                    config_path = cp
+                    break
+            if not config_path:
+                # fallback：QA-System 自身配置（仅用于 QA 系统自检场景）
+                qa_self = os.path.join(self.qa_system_root, ".ai/config/review-rules.yaml")
+                if os.path.exists(qa_self):
+                    config_path = qa_self
         if not config_path or not os.path.exists(config_path):
             config_path = os.path.join(self.project_root, ".ai/config/review-rules.yaml")
         self.config = load_yaml(config_path)
@@ -95,7 +111,8 @@ class HealthScorer:
 
         # 架构边界门禁
         ib_cfg = self.config.get("import_boundary_check", {})
-        self._enabled["import_boundary"] = _add("import_boundary", ImportBoundaryChecker(ib_cfg, self.project_root), "架构边界门禁")
+        self._enabled["import_boundary"] = _add(
+            "import_boundary", ImportBoundaryChecker(ib_cfg, self.project_root), "架构边界门禁")
 
         # QA 配置自审
         ca_cfg = self.config.get("config_audit_check", {})
@@ -106,6 +123,9 @@ class HealthScorer:
         # 代码风格
         cs_cfg = self.config.get("codestyle_check", {})
         self._enabled["codestyle"] = _add("codestyle", CodeStyleChecker(cs_cfg, self.project_root), "代码风格")
+        # 大文件强制阻断（LARGE-01 BLOCKER / LARGE-02 WARN baseline）
+        lf_cfg = self.config.get("largefiles_check", {})
+        self._enabled["largefiles"] = _add("largefiles", LargeFilesChecker(lf_cfg, self.project_root), "大文件检测")
         # 项目治理
         gv_cfg = self.config.get("governance_check", {})
         self._enabled["governance"] = _add("governance", GovernanceChecker(gv_cfg, self.project_root), "项目治理")
@@ -127,6 +147,10 @@ class HealthScorer:
         # 文档一致性
         ds_cfg = self.config.get("docconsistency_check", {})
         self._enabled["docconsistency"] = _add("docconsistency", DocConsistencyChecker(ds_cfg, self.project_root), "文档一致性")
+
+        # 命名冲突检测 (STYLE-03b 跨域命名空间隔离 & 单一数据源)
+        nc_cfg = self.config.get("naming_conflict_check", {})
+        self._enabled["naming_conflict"] = _add("naming_conflict", NamingConflictChecker(nc_cfg, self.project_root), "命名冲突检测")
 
         self._enabled["production"] = _add("production", ProductionChecker(pr_cfg, self.project_root), "生产就绪")
 
@@ -193,22 +217,31 @@ class HealthScorer:
             self._enabled[plugin_id] = True
             self._checkers.append((plugin_id, cfg, label))
         except Exception:
-            pass  # 静默加载，不阻塞
+            logger.warning("加载插件失败: %s", file_path, exc_info=True)
 
     # ── ───────────────────────────────────────────────────────────
 
     def _is_enabled(self, cid: str) -> bool:
         return self._enabled.get(cid, True)
 
-    def run_all(self) -> dict:
-        """运行所有 checker (A + B)，返回统一报告"""
+    def run_all(self) -> dict:  # noqa: STYLE-06
+        """运行所有 checker (A + B)，返回统一报告
+        
+        特别处理: quality_gates 需要读取当前报告，因此在报告保存后再运行
+        """
         all_issues: List[str] = []
         total_errors = 0
         checker_results = {}
+        quality_gates_info = None
 
         for cid, instance, label in self._checkers:
             if not self._is_enabled(cid):
                 checker_results[cid] = {"skipped": True, "label": label}
+                continue
+
+            # quality_gates 延迟运行：需要读取保存后的报告
+            if cid == "quality_gates":
+                quality_gates_info = (cid, instance, label)
                 continue
 
             # Layer B 插件: dict config + function check()
@@ -244,7 +277,7 @@ class HealthScorer:
                 total_errors += 1
                 all_issues.append(f"[{cid}] 异常: {e}")
 
-        return {
+        report = {
             "timestamp": datetime.now().isoformat(),
             "project_root": self.project_root,
             "profile": self.active_profile,
@@ -256,6 +289,31 @@ class HealthScorer:
             "all_issues": all_issues,
         }
 
+        # 先保存报告，再运行 quality_gates（此时报告已就绪）
+        if quality_gates_info:
+            self.save_report(report)
+            cid, instance, label = quality_gates_info
+            try:
+                errors, issues = instance.check()
+                checker_results[cid] = {
+                    "label": label, "errors": errors, "issues": issues or [],
+                    "details": self._parse_issue_details(issues or []),
+                }
+                total_errors += errors
+                all_issues.extend(issues or [])
+            except Exception as e:
+                checker_results[cid] = {"label": label, "error": str(e)}
+                total_errors += 1
+                all_issues.append(f"[{cid}] 异常: {e}")
+
+            # 更新报告中的汇总数据
+            report["errors"] = total_errors
+            report["total_issues"] = len(all_issues)
+            report["blocked"] = total_errors > 0 and not self.bootstrap
+            report["all_issues"] = all_issues
+
+        return report
+
     def _resolve_plugin_mod(self, plugin_id: str):
         """从 sys.modules 缓存中查找已加载的插件模块"""
         try:
@@ -265,7 +323,7 @@ class HealthScorer:
 
 
 
-    def _parse_issue_details(self, issues: List[str]) -> List[dict]:
+    def _parse_issue_details(self, issues: List[str]) -> List[dict]:  # noqa: STYLE-06
         """从 issue 文本提取结构化信息，供 AI Agent 直接使用，无需猜测"""
         # 每条规则的完整定义（Agent 不用猜"因为什么"）
         RULES = {
@@ -448,11 +506,11 @@ class HealthScorer:
                 schema = json.load(f)
             jsonschema.validate(report, schema)
         except ImportError:
-            pass  # 无 jsonschema 库时跳过
+            logger.debug("optional module not available: jsonschema", exc_info=True)
         except jsonschema.ValidationError as e:
             print(f"  [WARN] Schema 验证: {e.message}")
         except Exception:
-            pass
+            logger.warning("Schema 验证异常", exc_info=True)
 
     def to_sarif(self, report: dict) -> dict:
         """转换为 SARIF 2.1.0"""

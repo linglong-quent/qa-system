@@ -106,8 +106,9 @@ class ImportBoundaryChecker:
             # import X
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    top = alias.name.split(".")[0]
-                    if top in self.forbidden_prefixes:
+                    name = alias.name
+                    top = name.split(".")[0]
+                    if top in self.forbidden_prefixes and name not in self.allowed:
                         issues.append(
                             f"[BOUNDARY] {rel_path}:{node.lineno} "
                             f"禁止 import '{alias.name}' — "
@@ -118,8 +119,9 @@ class ImportBoundaryChecker:
             # from X import Y
             if isinstance(node, ast.ImportFrom):
                 if node.module:
-                    top = node.module.split(".")[0]
-                    if top in self.forbidden_prefixes:
+                    mod = node.module
+                    top = mod.split(".")[0]
+                    if top in self.forbidden_prefixes and mod not in self.allowed:
                         issues.append(
                             f"[BOUNDARY] {rel_path}:{node.lineno} "
                             f"禁止 from '{node.module}' — "

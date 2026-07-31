@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys, os
+import sys, os, logging
 # 强制 stdout/stderr 用 UTF-8，防止 GBK 管道截断 Unicode
 if hasattr(sys.stdout, 'reconfigure'):
     try: sys.stdout.reconfigure(encoding='utf-8')   # py3.7+
-    except Exception: pass
+    except Exception:
+        logging.debug("stdout.reconfigure 失败", exc_info=True)
 if hasattr(sys.stderr, 'reconfigure'):
     try: sys.stderr.reconfigure(encoding='utf-8')
-    except Exception: pass
+    except Exception:
+        logging.debug("stderr.reconfigure 失败", exc_info=True)
 """QA 系统统一入口 — 跨环境 (本地/CI/GitHub) 运行所有 checker。
 
 用法:
@@ -81,8 +83,8 @@ def run_all(project_root: str = _PROJECT_ROOT, bootstrap: bool = False):
     return report
 
 
-def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):
-    """运行单个 checker"""
+def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):  # noqa: STYLE-06
+    """运行单个 checker（支持 0-污染模式：优先读 QA-System/.ai/projects/{name}.yaml）"""
     CHECKER_MAP = {
         "inplace":  ("chk_inplacechecker",   "InplaceChecker"),
         "lookahead":("chk_lookaheadchecker", "LookaheadChecker"),
@@ -95,6 +97,9 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):
         "gates":    ("chk_qualitygates",     "QualityGateChecker"),
         "claude":   ("chk_claudevalidator",   "ClaudeValidator"),
         "prod":     ("chk_production",        "ProductionChecker"),
+        "codestyle":("chk_codestyle",        "CodeStyleChecker"),
+        "naming":   ("chk_namingconflict",   "NamingConflictChecker"),
+        "largefiles":("chk_largefiles",      "LargeFilesChecker"),
     }
 
     if checker_name not in CHECKER_MAP:
@@ -106,29 +111,61 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):
     mod = __import__(mod_name, fromlist=[cls_name])
     cls = getattr(mod, cls_name)
 
-    config_path = os.path.join(project_root, ".ai/config/review-rules.yaml")
-    if os.path.exists(config_path):
-        from chk_load_yaml import load_yaml
-        config = load_yaml(config_path)
-        cfg_key = {
-            "inplace": "inplace_check", "lookahead": "lookahead_check",
-            "secret": "secret_check", "deadcode": "deadcode_check",
-            "cyclic": "cyclic_check", "code-ban": "code_ban_check",
-            "prod": "production_check",
-            "boundary": "import_boundary_check",
-            "config": "config_audit_check",
-            "gates": "quality_gates",
-            "claude": "claude_validation",
-        }[checker_name]
-        cfg = config.get(cfg_key, {})
-    else:
-        cfg = {}
+    # 0-污染模式：优先从 QA-System/.ai/projects/{project_name}_local.yaml 加载
+    qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
+    project_name = os.environ.get("QA_PROJECT_NAME", "")
+    config = {}
+    if qa_system_root and project_name:
+        candidates = [
+            os.path.join(qa_system_root, ".ai", "projects", f"{project_name}_local.yaml"),
+            os.path.join(qa_system_root, ".ai", "projects", f"{project_name}.yaml"),
+        ]
+        for cp in candidates:
+            if os.path.exists(cp):
+                from chk_load_yaml import load_yaml
+                try:
+                    config = load_yaml(cp)
+                    break
+                except Exception:
+                    logging.warning("加载项目配置失败: %s", cp, exc_info=True)
+
+    # 项目本地配置（补充，向后兼容）
+    if not config:
+        config_path = os.path.join(project_root, ".ai/config/review-rules.yaml")
+        if os.path.exists(config_path):
+            from chk_load_yaml import load_yaml
+            try:
+                config = load_yaml(config_path)
+            except Exception:
+                logging.warning("加载本地配置失败: %s", config_path, exc_info=True)
+
+    cfg_key = {
+        "inplace": "inplace_check", "lookahead": "lookahead_check",
+        "secret": "secret_check", "deadcode": "deadcode_check",
+        "cyclic": "cyclic_check", "code-ban": "code_ban_check",
+        "prod": "production_check",
+        "boundary": "import_boundary_check",
+        "config": "config_audit_check",
+        "gates": "quality_gates",
+        "claude": "claude_validation",
+        "codestyle": "codestyle_check",
+        "largefiles": "largefiles_check",
+        "naming": "naming_conflict_check",
+    }[checker_name]
+    cfg = config.get(cfg_key, {})
 
     instance = cls(cfg, project_root)
     errors, issues = instance.check()
 
     if errors == 0:
-        print(f"[{checker_name}] ✅ 通过")
+        if issues:
+            print(f"[{checker_name}] ⚠️ 通过（{len(issues)} 个警告）")
+            for issue in issues[:10]:
+                print(f"  {issue}")
+            if len(issues) > 10:
+                print(f"  ... 共 {len(issues)} 个警告")
+        else:
+            print(f"[{checker_name}] ✅ 通过")
     else:
         print(f"[{checker_name}] ❌ {errors} 个错误")
         for issue in issues:
@@ -172,28 +209,37 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="QA 系统统一入口")
     parser.add_argument("command", nargs="?", default="all",
-                        help="all|health|inplace|lookahead|secret|deadcode|cyclic|code-ban|plugins|list")
+                        help="all|health|inplace|lookahead|secret|deadcode|cyclic|code-ban|boundary|prod|config|gates|claude|codestyle|largefiles|naming|plugins|list")
     parser.add_argument("--project-root", default=_PROJECT_ROOT)
     parser.add_argument("--bootstrap", action="store_true", help="不阻断，仅报告")
     args = parser.parse_args()
 
+    # 0-污染模式: 切换 cwd 到目标项目, 保证 checker 相对 scan_dirs 解析正确
+    project_root = os.path.abspath(args.project_root)
+    try:
+        os.chdir(project_root)
+    except OSError:
+        logging.warning("无法切换 cwd 到项目根: %s", project_root)
+
     cmd = args.command
 
     if cmd == "list":
-        list_checkers(args.project_root)
+        list_checkers(project_root)
         sys.exit(0)
 
     if cmd == "health":
-        report = run_all(args.project_root, args.bootstrap)
+        report = run_all(project_root, args.bootstrap)
         sys.exit(1 if report["errors"] > 0 and not args.bootstrap else 0)
 
     if cmd == "all":
-        report = run_all(args.project_root, args.bootstrap)
+        report = run_all(project_root, args.bootstrap)
         sys.exit(1 if report["errors"] > 0 and not args.bootstrap else 0)
 
-    SINGLE = ["inplace", "lookahead", "secret", "deadcode", "cyclic", "code-ban", "boundary", "prod", "config", "gates", "claude"]
+    SINGLE = ["inplace", "lookahead", "secret", "deadcode", "cyclic", "code-ban",
+              "boundary", "prod", "config", "gates", "claude", "codestyle", "largefiles",
+              "naming"]
     if cmd in SINGLE:
-        failed = run_single(cmd, args.project_root)
+        failed = run_single(cmd, project_root)
         sys.exit(1 if failed else 0)
 
     if cmd == "plugins":

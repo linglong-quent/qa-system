@@ -3,8 +3,10 @@
 
 通用 QA 能力，从量化 skill_doc_consistency 提取。
 """
-import os, re, ast
+import os, re, ast, logging
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class DocConsistencyChecker:
@@ -61,6 +63,7 @@ class DocConsistencyChecker:
                         refs += re.findall(r'`([A-Z]\w+)`', content)
                         doc_symbols.update(r.replace("()", "") for r in refs)
                     except Exception:
+                        logger.warning("读取文档文件失败: %s", fpath, exc_info=True)
                         continue
 
         # 公共符号在文档中无引用

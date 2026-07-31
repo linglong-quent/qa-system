@@ -7,8 +7,10 @@ CB Agent 常驻进程：
   3. 写完 processed.log → 标记已处理
   4. 写 fixed_result.json → QA 读到就知道修好了
 """
-import os, json, sys, time, subprocess
+import os, json, sys, time, subprocess, logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)
@@ -101,9 +103,10 @@ def fix_task(task: dict) -> dict:
                 result["status"] = "verified"
             else:
                 result["status"] = "still_failing"
-    except Exception as e:
+    except Exception:
+        logger.warning("执行修复任务失败", exc_info=True)
         result["status"] = "error"
-        result["error"] = str(e)
+        result["error"] = "任务执行异常，请查看日志"
 
     return result
 
