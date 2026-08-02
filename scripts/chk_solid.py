@@ -185,6 +185,10 @@ class SolidChecker:
                     for m in methods:
                         if m.name not in parent:
                             continue
+                        # 构造器不参与多态调用 (Mixin 组合模式显式调父类 __init__),
+                        # 参数扩展是常规实践, 不适用 LSP 覆写签名判定
+                        if m.name == "__init__":
+                            continue
                         cur = len(m.args.args) if m.args.args else 0
                         diff = abs(cur - parent[m.name])
                         if diff > self.override_arg_tolerance:
