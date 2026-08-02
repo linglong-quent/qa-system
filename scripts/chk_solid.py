@@ -7,7 +7,11 @@
   O 开闭原则  — 模块内同构函数体重复 (复制粘贴实现, 扩展需改多处)
   L 里氏替换  — 子类覆写父类方法但签名参数个数严重不兼容
   I 接口隔离  — 类方法过多 (上帝类) / 实例方法参数过多
-  D 依赖倒置  — 高层目录 (scripts/) 直接 import 具体实现而非 api 抽象层
+  D 依赖倒置  — domain 模块跨域直连具体实现 (非 domain/<域>/api/ 抽象层)
+
+D 原则语义 (v2): 依据架构宪法「跨域调用必须走 domain/*/api/」,
+对 domain/ 下每个模块检查其 import 是否直连其他域的具现实现
+(非 api 层、非白名单)。scripts 应用层依赖 domain 属正常分层, 不判违规。
 
 统一接口: check() -> (errors: int, issues: List[str])
 配置示例 (projects/*.yaml 或 review-rules.yaml):
@@ -21,8 +25,7 @@
     method_max_args: 8            # I: 实例方法参数阈值 (含 self, 排除 __init__)
     override_arg_tolerance: 3     # L: 覆写签名参数个数容忍度
     dup_body_min_lines: 12        # O: 判定重复的最小函数体行数
-    high_level_dirs: ["scripts"]  # D: 高层目录, 禁止直连具体实现
-    allowed_concrete: []          # D: 白名单 (允许直连的具体实现, 形如 domain.data.adapters.qmt_connector)
+    allowed_concrete: []          # D: 白名单 (允许跨域直连的具现, 形如 domain.data.theme.follow_degree)
 """
 import ast
 import os
@@ -43,7 +46,6 @@ class SolidChecker:
         "method_max_args": 8,
         "override_arg_tolerance": 3,
         "dup_body_min_lines": 12,
-        "high_level_dirs": ["scripts"],
         "allowed_concrete": [],
     }
 
@@ -58,7 +60,6 @@ class SolidChecker:
         self.method_max_args = int(cfg.get("method_max_args"))
         self.override_arg_tolerance = int(cfg.get("override_arg_tolerance"))
         self.dup_body_min_lines = int(cfg.get("dup_body_min_lines"))
-        self.high_level_dirs = cfg.get("high_level_dirs")
         self.allowed_concrete = set(cfg.get("allowed_concrete", []))
         # 第一遍收集的类→方法签名映射 (供 L 检查)
         self._class_methods: Dict[str, Dict[str, int]] = {}
@@ -125,7 +126,7 @@ class SolidChecker:
     def _check_file(self, fpath: str, rel: str, tree: ast.AST) -> Tuple[int, List[str]]:
         errors = 0
         issues: List[str] = []
-        is_high_level = self._is_high_level(rel)
+        cur_domain = self._file_domain(rel)
 
         # O: 模块内同构函数体重复 (先归一化收集)
         body_groups: Dict[str, List[ast.FunctionDef]] = defaultdict(list)
@@ -184,6 +185,10 @@ class SolidChecker:
                     for m in methods:
                         if m.name not in parent:
                             continue
+                        # 构造器不参与多态调用 (Mixin 组合模式显式调父类 __init__),
+                        # 参数扩展是常规实践, 不适用 LSP 覆写签名判定
+                        if m.name == "__init__":
+                            continue
                         cur = len(m.args.args) if m.args.args else 0
                         diff = abs(cur - parent[m.name])
                         if diff > self.override_arg_tolerance:
@@ -204,39 +209,45 @@ class SolidChecker:
                 f"(开闭原则, 应收敛为单一实现)"
             )
 
-        # D: 高层目录直连具体实现
-        if is_high_level:
+        # D: domain 模块跨域直连具体实现 (AGENTS.md 宪法: 跨域必须走 domain/*/api/)
+        if cur_domain:
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
                     mod = node.module
-                    if mod.startswith("domain.") and self._is_concrete_violation(mod):
+                    if self._is_cross_domain_violation(mod, cur_domain):
                         errors += 1
                         issues.append(
                             f"[SOLID-D] {rel}:{node.lineno} from '{mod}' "
-                            f"直连具体实现, 应经 domain.<域>.api/ 抽象 (依赖倒置)"
+                            f"跨域直连具体实现, 应经 domain.<域>.api/ 抽象 (依赖倒置)"
                         )
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         mod = alias.name
-                        if mod.startswith("domain.") and self._is_concrete_violation(mod):
+                        if self._is_cross_domain_violation(mod, cur_domain):
                             errors += 1
                             issues.append(
                                 f"[SOLID-D] {rel}:{node.lineno} import '{mod}' "
-                                f"直连具体实现, 应经 domain.<域>.api/ 抽象 (依赖倒置)"
+                                f"跨域直连具体实现, 应经 domain.<域>.api/ 抽象 (依赖倒置)"
                             )
 
         return errors, issues
 
-    def _is_high_level(self, rel: str) -> bool:
-        top = rel.split(os.sep)[0]
-        return top in self.high_level_dirs
+    @staticmethod
+    def _file_domain(rel: str) -> str:
+        """返回 rel 路径所属 domain 名 (domain/<域>/... 则返回 <域>, 否则空串)."""
+        parts = rel.split(os.sep)
+        if len(parts) >= 2 and parts[0] == "domain":
+            return parts[1]
+        return ""
 
-    def _is_concrete_violation(self, mod: str) -> bool:
-        """判定 domain 模块是否属具体实现 (非 api 层、非白名单)."""
+    def _is_cross_domain_violation(self, mod: str, cur_domain: str) -> bool:
+        """判定 domain.<其他域>.<具体实现> 是否构成跨域直连违规."""
         if mod in self.allowed_concrete:
             return False
         parts = mod.split(".")
         if len(parts) < 3:
+            return False
+        if parts[0] != "domain" or parts[1] == cur_domain:
             return False
         third = parts[2]
         if third == "api" or third.startswith("api"):
