@@ -31,7 +31,7 @@ if _SCRIPTS_DIR not in sys.path:
 CODE_CHECKERS = {"inplace_check", "lookahead_check", "secret_check",
                  "deadcode_check", "cyclic_check", "code_ban",
                  "import_boundary", "config_audit", "production",
-                 "naming_conflict"}
+                 "naming_conflict", "solid_check"}
 
 META_CHECKERS = {"quality_gates", "claude_validation"}
 

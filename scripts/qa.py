@@ -99,7 +99,8 @@ def main():  # noqa: STYLE-06
                                  "cyclic", "code-ban", "boundary", "config", "gates",
                                  "claude", "prod", "codestyle", "governance",
                                  "securityplus", "documentation", "zeroprint",
-                                 "customrules", "fusedetect", "docconsistency"):
+                                 "customrules", "fusedetect", "docconsistency",
+                                 "solid"):
             from qa_check import run_single
             failed = run_single(rest[0], project_root)
             sys.exit(1 if failed else 0)
