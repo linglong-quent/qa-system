@@ -41,6 +41,7 @@ from chk_customrules import CustomRulesChecker
 from chk_fusedetector import FuseDetectorChecker
 from chk_docconsistency import DocConsistencyChecker
 from chk_namingconflict import NamingConflictChecker
+from chk_solid import SolidChecker
 
 
 class HealthScorer:
@@ -151,6 +152,10 @@ class HealthScorer:
         # 命名冲突检测 (STYLE-03b 跨域命名空间隔离 & 单一数据源)
         nc_cfg = self.config.get("naming_conflict_check", {})
         self._enabled["naming_conflict"] = _add("naming_conflict", NamingConflictChecker(nc_cfg, self.project_root), "命名冲突检测")
+
+        # SOLID 五原则静态门禁 (S/O/L/I/D AST 检查)
+        sd_cfg = self.config.get("solid_check", {})
+        self._enabled["solid"] = _add("solid", SolidChecker(sd_cfg, self.project_root), "SOLID 五原则")
 
         self._enabled["production"] = _add("production", ProductionChecker(pr_cfg, self.project_root), "生产就绪")
 

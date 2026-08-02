@@ -100,6 +100,7 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):  # noqa: S
         "codestyle":("chk_codestyle",        "CodeStyleChecker"),
         "naming":   ("chk_namingconflict",   "NamingConflictChecker"),
         "largefiles":("chk_largefiles",      "LargeFilesChecker"),
+        "solid":    ("chk_solid",            "SolidChecker"),
     }
 
     if checker_name not in CHECKER_MAP:
@@ -151,6 +152,7 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):  # noqa: S
         "codestyle": "codestyle_check",
         "largefiles": "largefiles_check",
         "naming": "naming_conflict_check",
+        "solid": "solid_check",
     }[checker_name]
     cfg = config.get(cfg_key, {})
 
@@ -209,7 +211,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="QA 系统统一入口")
     parser.add_argument("command", nargs="?", default="all",
-                        help="all|health|inplace|lookahead|secret|deadcode|cyclic|code-ban|boundary|prod|config|gates|claude|codestyle|largefiles|naming|plugins|list")
+                        help="all|health|inplace|lookahead|secret|deadcode|cyclic|code-ban|boundary|prod|config|gates|claude|codestyle|largefiles|naming|solid|plugins|list")
     parser.add_argument("--project-root", default=_PROJECT_ROOT)
     parser.add_argument("--bootstrap", action="store_true", help="不阻断，仅报告")
     args = parser.parse_args()

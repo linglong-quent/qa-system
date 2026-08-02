@@ -341,6 +341,20 @@ naming_conflict_check:
   - "shared/resilience.py:CircuitBreaker"
   - "domain/decision/engines/rotation_engine.py:RotationSignal"
   - "domain/cognition/portrait/position_risk.py:PositionRiskState"
+solid_check:
+  enabled: false  # QA-System 自身不参与 SOLID 门禁（存量违规整改完成后可开启）
+  scan_dirs:
+  - scripts/
+  severity: WARN
+  func_max_lines: 120
+  func_max_args: 7
+  class_max_methods: 16
+  method_max_args: 8
+  override_arg_tolerance: 3
+  dup_body_min_lines: 12
+  high_level_dirs:
+  - scripts
+  allowed_concrete: []
 fusedetect_check:
   enabled: true
   severity: WARN

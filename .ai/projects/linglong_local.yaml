@@ -259,6 +259,23 @@ deadcode_check:
   - scripts/run_daily.py
   - scripts/report_daily.py
   scan_public_only: true
+solid_check:
+  enabled: true
+  scan_dirs:
+  - domain/
+  - scripts/
+  - shared/
+  - backtest/
+  severity: WARN
+  func_max_lines: 120
+  func_max_args: 7
+  class_max_methods: 16
+  method_max_args: 8
+  override_arg_tolerance: 3
+  dup_body_min_lines: 12
+  high_level_dirs:
+  - scripts
+  allowed_concrete: []
 cyclic_check:
   enabled: true
   scan_dirs:
