@@ -181,6 +181,7 @@ def main():  # noqa: STYLE-06
         ("chk_cyclicchecker",     "CyclicImportChecker"),
         ("chk_codebanchecker",    "CodeBanChecker"),
         ("chk_importboundary",    "ImportBoundaryChecker"),
+        ("chk_solid",             "SolidChecker"),
     ]
     for mod_name, cls_name in checker_modules:
         try:

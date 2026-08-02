@@ -31,7 +31,7 @@ if _SCRIPTS_DIR not in sys.path:
 CODE_CHECKERS = {"inplace_check", "lookahead_check", "secret_check",
                  "deadcode_check", "cyclic_check", "code_ban",
                  "import_boundary", "config_audit", "production",
-                 "naming_conflict"}
+                 "naming_conflict", "solid"}
 
 META_CHECKERS = {"quality_gates", "claude_validation"}
 
@@ -659,7 +659,8 @@ class GateKeeper:
                           .replace("customrules", "customrules_check") \
                           .replace("fusedetect", "fusedetect_check") \
                           .replace("docconsistency", "docconsistency_check") \
-                          .replace("production", "production_check")
+                          .replace("production", "production_check") \
+                          .replace("solid", "solid_check")
             cid_cfg = config.get(cid_key, {})
             sev = cid_cfg.get("severity", "BLOCKER")
             if sev == "BLOCKER":
