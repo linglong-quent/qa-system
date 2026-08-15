@@ -48,6 +48,14 @@ _PARAM_PATTERNS = [
 ]
 
 
+def _strip_fenced_blocks(text: str) -> str:
+    """剥离 Markdown fenced code blocks (``` ... ```).
+
+    代码示例不是文档参数声明, 参与参数比对会产生大量误报.
+    """
+    return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+
+
 class SchemaValidator:
     """从文档中提取结构化参数，与代码常量自动比对"""
 
@@ -63,7 +71,14 @@ class SchemaValidator:
             return params
         for root, dirs, files in os.walk(self.docs_dir):
             # 跳过生成文档和临时文件
-            skip_doc_dirs = {"portraits", "archive", "draft", "tmp", "_archive"}
+            # 2026-08-15 G-1: 加入报表类目录 — factor_audit 等是因子 IC 报表
+            # (数据表格, 数值是统计结果), 非参数声明, 参与 SchemaValidator 比对
+            # 会产生大量误报 (如 s_reb 行的 IC 值被误当 LAYER_WEIGHTS 参数).
+            skip_doc_dirs = {
+                "portraits", "archive", "draft", "tmp", "_archive",
+                "factor_audit", "deep_analysis", "retrospectives",
+                "review", "proposals", "impact",
+            }
             dirs[:] = [d for d in dirs if d not in skip_doc_dirs]
             for f in files:
                 if not f.endswith(".md"):
@@ -75,6 +90,8 @@ class SchemaValidator:
                 except Exception:
                     logger.warning("读取文档参数文件失败: %s", fpath, exc_info=True)
                     continue
+                # 剥离 fenced code blocks — 代码示例不是参数声明, 避免误报
+                text = _strip_fenced_blocks(text)
                 for pattern in _PARAM_PATTERNS:
                     for match in pattern.finditer(text):
                         # 提取上下文作为 key
@@ -82,7 +99,8 @@ class SchemaValidator:
                         context = text[line_start:match.start()].strip().split('\n')[-1].strip()
                         if len(context) > 60:
                             context = context[-60:]
-                        value = match.group(1)
+                        # value: 数值组优先 (group 2), 缺省回退 group 1
+                        value = match.group(2) if match.lastindex and match.lastindex >= 2 else match.group(1)
                         key = f"{rel}:{context}:{value}"
                         params[key] = {
                             "file": rel,
@@ -133,10 +151,14 @@ class SchemaValidator:
                         continue
                     for pattern in const_patterns:
                         for match in pattern.finditer(text):
-                            key = f"{rel}:{match.group(1)}:{match.group(2)}"
+                            name = match.group(1)
+                            # 纯数字键(证券/板块代码, 如 "002415")不是参数常量, 跳过避免文档表格误报
+                            if name.isdigit():
+                                continue
+                            key = f"{rel}:{name}:{match.group(2)}"
                             constants[key] = {
                                 "file": rel,
-                                "name": match.group(1),
+                                "name": name,
                                 "value": match.group(2),
                                 "line": text[:match.start()].count('\n') + 1,
                             }
@@ -681,7 +703,7 @@ class GateKeeper:
         if not detail_parts:
             detail_parts.append(f"全部 {len(ran)} checker 通过, 0 错误")
 
-        score = self._calc_score(report)
+        score = self._calc_score(report, config)
         if score is not None:
             detail_parts.append(f"健康评分: {score}/100")
 
@@ -690,15 +712,45 @@ class GateKeeper:
         self.check("Gate5 评分检测", len(missing) == 0 and errors == 0,
                     " · ".join(detail_parts))
 
-    def _calc_score(self, report: dict) -> Optional[float]:
-        """根据报告计算健康评分"""
+    def _checker_cfg_key(self, cid: str) -> str:
+        """checker id → 配置段 key（cid 使用短名, 配置段使用 *_check 全名）.  # noqa: STYLE-06
+        """
+        return (cid.replace("naming_conflict", "naming_conflict_check")
+                   .replace("code_ban", "code_ban_check")
+                   .replace("import_boundary", "import_boundary_check")
+                   .replace("config_audit", "config_audit_check")
+                   .replace("quality_gates", "quality_gates_check")
+                   .replace("claude_validation", "claude_validation_check")
+                   .replace("codestyle", "codestyle_check")
+                   .replace("governance", "governance_check")
+                   .replace("securityplus", "securityplus_check")
+                   .replace("documentation", "documentation_check")
+                   .replace("zeroprint", "zeroprint_check")
+                   .replace("customrules", "customrules_check")
+                   .replace("fusedetect", "fusedetect_check")
+                   .replace("docconsistency", "docconsistency_check")
+                   .replace("production", "production_check")
+                   .replace("solid", "solid_check"))
+
+    def _calc_score(self, report: dict, config: dict) -> Optional[float]:
+        """根据报告计算健康评分 — 只对 CODE_CHECKERS 中 BLOCKER 级错误扣分.
+
+        与 Gate5 阻断语义严格一致: 非阻断 (INFO/WARN) 发现不计入健康分,
+        避免出现 "0 阻断错误 + 0/100" 的矛盾展示.
+        """
         try:
             total = 100.0
-            for cid, cdata in report.get("checkers", {}).items():
+            for cid in CODE_CHECKERS:
+                cdata = report.get("checkers", {}).get(cid, {})
                 if cdata.get("skipped"):
                     continue
                 err = cdata.get("errors", 0)
-                deduct = min(err * 5.0, 30.0)  # 每个错误扣 5 分，上限 30
+                if err == 0:
+                    continue
+                sev = config.get(self._checker_cfg_key(cid), {}).get("severity", "BLOCKER")
+                if sev != "BLOCKER":
+                    continue
+                deduct = min(err * 5.0, 30.0)  # 每个阻断错误扣 5 分，上限 30
                 total -= deduct
             return max(0, total)
         except Exception:
