@@ -234,6 +234,12 @@ deadcode_check:
   - p0/
   - backtest/
   - config/
+  # 引用收集补充目录: data/ops 大量引用业务符号, 缺失会产生孤儿误报
+  ref_dirs:
+  - scripts/
+  - tests/
+  - data/
+  - ops/
   severity: INFO
   exempt_names:
   - main
@@ -995,6 +1001,7 @@ code_ban_check:
   - ops/
   - scripts/
   - tests/
+  - data/
   entry_modules:
   - domain.access.main
   - scripts.report_daily
@@ -1030,7 +1037,7 @@ largefiles_check:
   - .pytest_cache
   nfr_baseline:
     max_class_length_lines: 500
-  baseline_file: e:\WB\QA-System\.ai\projects\largefiles_baseline.yaml
+  baseline_file: d:\WB\QA-System\.ai\projects\largefiles_baseline.yaml
 lookahead_check:
   enabled: true
   scan_dirs:
@@ -1120,8 +1127,10 @@ import_boundary_check:
   - matplotlib
   - seaborn
   max_depth: 5
-  # 跨域 import 豁免（架构统一后无需豁免，保留空列表以维持 YAML 锚点）
-  import_exempt: &id001 []
+  # 跨域 import 豁免（架构统一后无需豁免；以下为领域内惰性导入的既有依赖）
+  import_exempt: &id001
+  - cognition.factor.engines
+  - factor.data.tdx_sector
 metrics:
   enabled: true
   tracked_issues:
@@ -1589,6 +1598,10 @@ naming_conflict_check:
   - backup
   - .mypy_cache
   - .pytest_cache
+  # workspace/_fts_ref 为全文本搜索参考镜像, 非生产代码, 不参与命名冲突检测
+  - workspace
+  # .deps 为第三方依赖 (scipy/hypothesis 等), 不参与命名冲突检测
+  - .deps
   exempt_file_patterns:
   - test_
   - conftest

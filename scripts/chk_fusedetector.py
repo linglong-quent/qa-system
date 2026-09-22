@@ -121,15 +121,22 @@ class FuseDetectorChecker:
         for fpath in self._collect_py_files():
             rel = os.path.relpath(fpath, self.project_root)
             try:
-                with open(fpath, "r", encoding="utf-8") as fh:
+                with open(fpath, "r", encoding="utf-8-sig", errors="replace") as fh:
                     content = fh.read()
             except Exception:
                 logger.warning("读取文件失败: %s", fpath, exc_info=True)
+                issues.append(f"[PARSE-001] {rel}: 文件不可读；该文件未被 FUSE 检测覆盖"
+                              f"（原行为：仅 warning 后静默跳过）")
                 continue
 
             try:
                 tree = ast.parse(content, filename=fpath)
-            except SyntaxError:
+            except SyntaxError as exc:
+                # M50：原为静默 `continue`。带 BOM 的文件在 ast.parse(str) 下首行必失败
+                # （invalid non-printable character U+FEFF），静默跳过 ⇒ 整个文件对门禁
+                # 不可见。改为上报；读取统一用 utf-8-sig 剥 BOM。
+                issues.append(f"[PARSE-001] {rel}: 解析失败 —— {exc.msg} (line {exc.lineno})；"
+                              f"该文件未被 FUSE 检测覆盖（原行为：静默跳过）")
                 continue
 
             call_lines = self._find_functions_with_external_calls(tree, content)

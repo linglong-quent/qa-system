@@ -97,11 +97,15 @@ class ConfigAuditChecker:
             "code_ban_check": "chk_codebanchecker",
             "import_boundary_check": "chk_importboundary",
         }
-        # scripts/ 在 QA-System 中（0-污染模式或 QA_SYSTEM_ROOT 已指定），否则在项目根
-        # 检查器脚本属于 QA-System 而非被测项目，因此只要 QA_SYSTEM_ROOT 可用即优先使用其 scripts/
-        scripts_dir = (os.path.join(self.qa_system_root, "scripts")
-                       if self.qa_system_root
-                       else os.path.join(self.project_root, "scripts"))
+        # 检查器脚本属于 QA-System 而非被测项目:
+        # 优先 QA_SYSTEM_ROOT 显式指定; 否则按本文件位置推导 QA-System/scripts;
+        # 最后回退被测项目 scripts (历史场景兼容)
+        if self.qa_system_root:
+            scripts_dir = os.path.join(self.qa_system_root, "scripts")
+        else:
+            scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+            if not os.path.isdir(scripts_dir):
+                scripts_dir = os.path.join(self.project_root, "scripts")
         config_label = os.path.basename(rules_path)
         for config_key, module_name in checker_module_map.items():
             section = config.get(config_key)

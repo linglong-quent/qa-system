@@ -11,6 +11,8 @@ venv/
 .ai/defects/
 .ai/fixes/
 .ai/handoff/
+.ai/.staging/
+.ai/runs/
 linglong_local/
 
 # OS

@@ -15,7 +15,15 @@
   Gate9  Compliance & Retro   — ISO 27001/SOX 对齐 + 自检 + 复盘闭环
 
 任何一项不通过 -> exit 1 -> 阻断提交/合并。
-生产模式 (QA_ENV=production) 自动通过所有门禁。
+
+退出码契约（编排契约 v1.1）:
+  0 = ALLOW  全部门禁通过（或 --report 只报告模式 / 显式 bypass）
+  1 = DENY   存在阻断级门禁失败
+  2 = ERROR  技术性失败（无 QA 报告、未知 Gate、内部异常）
+
+生产旁路: 自 v1.1 起 QA_ENV=production 不再自动放行；
+仅当显式传入 --allow-production-bypass（或 QA_ALLOW_PRODUCTION_BYPASS=1）
+时生效，并在 JSON 契约中记录 bypass.applied=true 以供审计。
 """
 import os, json, sys, subprocess, re, logging
 from datetime import datetime
@@ -31,9 +39,79 @@ if _SCRIPTS_DIR not in sys.path:
 CODE_CHECKERS = {"inplace_check", "lookahead_check", "secret_check",
                  "deadcode_check", "cyclic_check", "code_ban",
                  "import_boundary", "config_audit", "production",
-                 "naming_conflict", "solid"}
+                 "naming_conflict", "solid",
+                 # T29 盲区规则集：必须计入 Gate5 阻断统计，否则新规则不阻断
+                 "semantic_truth", "docstring_code", "blindspot",
+                 "runtime_drift", "vcs_governance", "container_plane"}
 
 META_CHECKERS = {"quality_gates", "claude_validation"}
+
+# M51-①：未运行的 checker 在健康评分里的扣分权重。
+# 取 5.0 与 "每个阻断错误扣 5 分" 同权 —— 语义上「一个 checker 从未运行」
+# 与「该 checker 报了一个阻断错误」对"可置信度"的损害是同一量级：
+# 两者都意味着这份评分不能代表真实健康度。6 个缺失 ⇒ 扣满 30 分上限 ⇒ 70/100。
+MISSING_CHECKER_DEDUCT = 5.0
+
+# ── 噪声分级（T29 要求③）────────────────────────────────────────
+# T21 实测：2171 条任务里 90.6% 是风格/孤儿代码噪声，secret_check 仅 11 条。
+# 一个输出 90% 噪声的门禁会被直接忽略 —— 噪声本身就是一种失效。
+# 下列 checker 的产出统一降为 ADVISORY（不阻断、单独计数、排在 tasks[] 后面），
+# 使真信号浮到前面。
+ADVISORY_CHECKERS = {
+    "codestyle",        # STYLE-01~06 行号超长/行数超限
+    "largefiles",       # LARGE-01 文件过大
+    "deadcode_check",   # DEADCODE-001 孤儿符号
+    "naming_conflict",  # STYLE-03b 跨域命名
+    "documentation",    # DOC-03/04 文档标题/格式
+    "docconsistency",   # 文档↔代码目录一致性
+    "zeroprint",        # 零打印
+    "fusedetect",       # FUSE-* 外部调用缺重试（多为第三方代码）
+}
+
+# 真信号 checker（显式列出以便审计）
+SIGNAL_CHECKERS = {
+    "secret_check", "lookahead_check", "cyclic_check", "import_boundary",
+    "config_audit", "securityplus", "code_ban", "production",
+    "semantic_truth", "docstring_code", "blindspot", "runtime_drift",
+    "vcs_governance", "container_plane",
+}
+
+
+def _normalize_tasks(tasks):
+    """按噪声分级补 severity/blocking，并把真信号排到前面。"""
+    for t in tasks:
+        if t["checker"] in ADVISORY_CHECKERS:
+            t["severity"] = "ADVISORY"
+            t["blocking"] = False
+        elif t["checker"] in SIGNAL_CHECKERS:
+            t["severity"] = "BLOCKER"
+            t["blocking"] = True
+    order = {"BLOCKER": 0, "WARN": 1, "ADVISORY": 2, "INFO": 3}
+    tasks.sort(key=lambda t: (order.get(t["severity"], 3), t["checker"], t["file"], t["line"]))
+    return tasks
+
+
+def _gate_id_from_name(name: str) -> str:
+    """'Gate3.1 框架手册自审' → '3.1'（供 JSON 契约稳定引用）"""
+    m = re.match(r"^Gate([0-9]+(?:\.[0-9]+)?)", name or "")
+    return m.group(1) if m else (name or "")
+
+
+def _extract_location(text: str) -> Tuple[str, int]:
+    """从 issue 文本提取 (文件, 行号)；提取不到返回 ("", 0)"""
+    m = re.search(r"([\w\\/.-]+\.(?:py|yaml|yml|md|json|toml|cfg|ini))", text or "")
+    if not m:
+        return "", 0
+    line_m = re.search(r":(\d+)", text or "")
+    return m.group(1), (int(line_m.group(1)) if line_m else 0)
+
+
+def _gate_for_checker(cid: str) -> str:
+    """checker → 归属 Gate（供编排系统按门分组派活）"""
+    return {
+        "quality_gates": "gate5", "claude_validation": "gate5",
+        "production": "gate8", "codestyle": "gate5", "governance": "gate5",
+    }.get(cid, "gate5")
 
 # ── SchemaValidator 原生实现（无额外依赖） ──────────────────────
 
@@ -348,13 +426,37 @@ class FrameworkSelfAudit:
 class GateKeeper:
     """Gate0-Gate9 十层门禁 + Gate3.1 框架自审"""
 
-    def __init__(self, project_root=None):
+    def __init__(self, project_root=None, run_id: str = "", runs_dir: str = "",
+                 allow_production_bypass: bool = False, readonly: bool = False,
+                 allow_stale_report: bool = False, alert: bool = False):
         self.root = project_root or _PROJECT_ROOT
         self.results = []
         # 0-污染模式：配置在 QA-System 中，不在项目里
         self.qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
         self.project_name = os.environ.get("QA_PROJECT_NAME", "")
         self.zero_pollution = bool(self.qa_system_root and self.project_name)
+        # ── 运行上下文（产物隔离）──────────────────────────────
+        self.run_id = run_id or ""
+        self.runs_dir = runs_dir or ""
+        self.run_dir = ""
+        if self.run_id:
+            from qa_run import resolve_run_dir
+            self.run_dir = resolve_run_dir(self.run_id, self.root, self.qa_system_root, self.runs_dir)
+        self.allow_production_bypass = bool(allow_production_bypass)
+        # M51-①：是否允许用非本 run 的存量报告下结论（默认禁止，必须显式）
+        self.allow_stale_report = bool(allow_stale_report)
+        # M51-(a)：门禁产出是否有消费者（默认开：DENY 必须告警到达人，不落磁盘了事）
+        self.alert_enabled = bool(alert)
+        self.report_source = ""
+        self.report_timestamp = ""
+        self.alert_result = {}
+        # ── 只读审计模式：禁止一切写入被审对象的副作用 ──
+        # （不良品登记 registry.json + CB 收件箱 inbox.json 均按目标目录解析，
+        #   在只读审计/反向检验场景下必须可关闭，避免污染被审系统）
+        self.readonly = bool(readonly)
+        self.bypass = {"applied": False, "reason": "", "env": os.environ.get("QA_ENV", "")}
+        self.report_path = ""
+        self.errors = []
         # 加载配置
         self.config = self._load_config()
 
@@ -394,8 +496,21 @@ class GateKeeper:
                     pass
         return config
 
-    def check(self, name, passed, detail=""):
-        self.results.append({"name": name, "passed": passed, "detail": detail})
+    def check(self, name, passed, detail="", gate_id="", severity="BLOCKER"):
+        """登记一个门禁结果。
+
+        severity=BLOCKER 且 passed=False → blocking=True（门禁阻断 → DENY）
+        severity=WARN/INFO 且 passed=False → 记录失败但不阻断（可观测、可编排）
+        """
+        sev = (severity or "BLOCKER").upper()
+        self.results.append({
+            "id": gate_id or _gate_id_from_name(name),
+            "name": name,
+            "passed": bool(passed),
+            "severity": sev,
+            "blocking": (not passed) and sev == "BLOCKER",
+            "detail": detail,
+        })
 
     def run(self):
         """按 Gate0→Gate9 顺序执行全部门禁"""
@@ -484,7 +599,13 @@ class GateKeeper:
         return None
 
     def _gate1_position(self):
-        """Gate1: 文档位置校验"""
+        """Gate1: 文档位置校验
+
+        判定语义（v1.1 修复 T03-R6「缺目录仍 PASS」）：
+          * docs/ 下混入 .py 等违规文件 → passed=False, severity=BLOCKER
+          * 缺少标准文档目录          → passed=False, severity=WARN（不阻断）
+        两类问题都会体现在 passed=False 上，不再出现"detail 说缺、结果说 PASS"。
+        """
         violations = []
         docs_dir = os.path.join(self.root, "docs")
         if os.path.isdir(docs_dir):
@@ -504,7 +625,16 @@ class GateKeeper:
             detail = f"缺标准目录: {missing}"
         else:
             detail = "文档位置正确"
-        self.check("Gate1 文档位置", len(violations) == 0, detail)
+        # 违规文件 = 阻断；仅缺目录 = WARN（可观测不阻断）
+        severity = "BLOCKER" if violations else "WARN"
+        self.check("Gate1 文档位置", len(violations) == 0 and not missing, detail,
+                   gate_id="1", severity=severity)
+
+    # 标准文档白名单：大写/全大写为行业约定，不应被"小写+连词符"规则误判
+    DOC_NAME_EXEMPT = {
+        "README.md", "CHANGELOG.md", "LICENSE", "LICENSE.md", "CONTRIBUTING.md",
+        "CODEOWNERS", "SECURITY.md", "NOTICE", "AUTHORS.md", "TODO.md",
+    }
 
     def _gate2_naming(self):
         """Gate2: 文档命名校验"""
@@ -513,10 +643,13 @@ class GateKeeper:
         if os.path.isdir(docs_dir):
             for f in os.listdir(docs_dir):
                 fpath = os.path.join(docs_dir, f)
-                if os.path.isfile(fpath):
-                    # 文件名含空格或大写字母（Markdown 约定小写+连词符）
-                    if " " in f or (f != f.lower() and not f.startswith(".")):
-                        violations.append(f)
+                if not os.path.isfile(fpath):
+                    continue
+                if f in self.DOC_NAME_EXEMPT:
+                    continue
+                # 文件名含空格或大写字母（Markdown 约定小写+连词符）
+                if " " in f or (f != f.lower() and not f.startswith(".")):
+                    violations.append(f)
 
         # 检查 config/ 零 .py 规则
         config_dir = os.path.join(self.root, "config")
@@ -666,23 +799,8 @@ class GateKeeper:
             cid_errors = report.get("checkers", {}).get(cid, {}).get("errors", 0)
             if cid_errors == 0:
                 continue
-            # 从配置读取严重级别，BLOCKER 才阻断
-            cid_key = cid.replace("naming_conflict", "naming_conflict_check") \
-                          .replace("code_ban", "code_ban_check") \
-                          .replace("import_boundary", "import_boundary_check") \
-                          .replace("config_audit", "config_audit_check") \
-                          .replace("quality_gates", "quality_gates_check") \
-                          .replace("claude_validation", "claude_validation_check") \
-                          .replace("codestyle", "codestyle_check") \
-                          .replace("governance", "governance_check") \
-                          .replace("securityplus", "securityplus_check") \
-                          .replace("documentation", "documentation_check") \
-                          .replace("zeroprint", "zeroprint_check") \
-                          .replace("customrules", "customrules_check") \
-                          .replace("fusedetect", "fusedetect_check") \
-                          .replace("docconsistency", "docconsistency_check") \
-                          .replace("production", "production_check") \
-                          .replace("solid", "solid_check")
+            # 从配置读取严重级别，BLOCKER 才阻断（统一用 _checker_cfg_key，避免两处映射漂移）
+            cid_key = self._checker_cfg_key(cid)
             cid_cfg = config.get(cid_key, {})
             sev = cid_cfg.get("severity", "BLOCKER")
             if sev == "BLOCKER":
@@ -705,11 +823,23 @@ class GateKeeper:
 
         score = self._calc_score(report, config)
         if score is not None:
-            detail_parts.append(f"健康评分: {score}/100")
+            # M51-①：评分必须连覆盖率一起展示，否则会出现
+            # 「Gate5 FAIL（缺 6 个 checker）· 健康评分 100/100」这种自相矛盾的对外数字。
+            cover = len(all_c & ran)
+            detail_parts.append(f"健康评分: {score}/100（覆盖 {cover}/{len(all_c)} checker"
+                                + (f"，缺失 {len(missing)} 个已计入扣分" if missing else "") + "）")
 
-        # Gate5 阻断条件：CODE_CHECKERS 必须全部通过
+        # M51-①：裁决对象必须是本 run 的采集产物，否则"缺 checker"只是表象，
+        # 真因是**门禁没跑 checker**。非新鲜来源默认不通过（需 --allow-stale-report）。
+        stale = not self._report_is_fresh()
+        if stale:
+            detail_parts.insert(0, f"★裁决对象非本 run 采集产物（来源={self.report_source or '未知'}"
+                                   f"，时间戳={self.report_timestamp or '未知'}）—— 门禁不自己跑 "
+                                   f"checker，此结论基于存量报告；如需放行请显式加 --allow-stale-report")
+
+        # Gate5 阻断条件：CODE_CHECKERS 必须全部通过，且裁决对象必须新鲜
         # quality_gates/claude 等元检查仅报告，不阻断
-        self.check("Gate5 评分检测", len(missing) == 0 and errors == 0,
+        self.check("Gate5 评分检测", len(missing) == 0 and errors == 0 and not stale,
                     " · ".join(detail_parts))
 
     def _checker_cfg_key(self, cid: str) -> str:
@@ -721,6 +851,12 @@ class GateKeeper:
                    .replace("config_audit", "config_audit_check")
                    .replace("quality_gates", "quality_gates_check")
                    .replace("claude_validation", "claude_validation_check")
+                   .replace("semantic_truth", "semantic_truth_check")
+                   .replace("docstring_code", "docstring_code_check")
+                   .replace("blindspot", "blindspot_check")
+                   .replace("runtime_drift", "runtime_drift_check")
+                   .replace("vcs_governance", "vcs_governance_check")
+                   .replace("container_plane", "container_plane_check")
                    .replace("codestyle", "codestyle_check")
                    .replace("governance", "governance_check")
                    .replace("securityplus", "securityplus_check")
@@ -737,11 +873,22 @@ class GateKeeper:
 
         与 Gate5 阻断语义严格一致: 非阻断 (INFO/WARN) 发现不计入健康分,
         避免出现 "0 阻断错误 + 0/100" 的矛盾展示.
+
+        [M51-① 2026-09-14 by m-qa] 修复「缺失 = 满分」：
+        原实现对 `report["checkers"].get(cid, {})` 取空 dict ⇒ 未运行的 checker
+        `err` 恰为 0 ⇒ `continue` 不扣分 ⇒ **6 个 checker 从未运行，健康分仍报 100/100**，
+        与同一行的 `Gate5 ❌ FAIL` 直接矛盾。这与 `script_quality_check.py`
+        「扫描 0 个文件 ⇒ 无问题 ⇒ 全部通过」是同一族：**「没有数据」被当成「没有问题」**。
+        现改为：缺失的阻断级 checker 按"发现阻断错误"同权扣分，使「覆盖率不足」无法隐藏。
         """
         try:
             total = 100.0
             for cid in CODE_CHECKERS:
-                cdata = report.get("checkers", {}).get(cid, {})
+                cdata = report.get("checkers", {}).get(cid)
+                # M51-①：checker 根本没出现在报告里 = 从未运行，必须扣分而非跳过
+                if cdata is None:
+                    total -= MISSING_CHECKER_DEDUCT
+                    continue
                 if cdata.get("skipped"):
                     continue
                 err = cdata.get("errors", 0)
@@ -900,7 +1047,7 @@ class GateKeeper:
             env["PYTHONIOENCODING"] = "utf-8"
             r = subprocess.run(
                 [sys.executable, os.path.join(_SCRIPTS_DIR, "qa_self_test.py")],
-                capture_output=True, timeout=30, cwd=self.root, env=env
+                capture_output=True, timeout=180, cwd=self.root, env=env
             )
             if r.returncode != 0:
                 issues.append("系统自检失败")
@@ -925,37 +1072,121 @@ class GateKeeper:
     # ── 辅助方法 ──────────────────────────────────────────────
 
     def _load_report(self):
-        # 0-污染模式：报告在 QA-System/.ai/logs/{project_name}/qa-report.json
+        """加载被裁决的 QA 报告，并把实际读取路径记录到 self.report_path。
+
+        查找顺序：
+          1. {run_dir}/qa-report.json        —— 本 run 的采集产物（唯一可信来源）
+          2. QA_RUN_REPORT_PATH              —— 同进程 / 显式注入
+          3. 0-污染模式：{QA_SYSTEM_ROOT}/.ai/logs/{project_name}/qa-report.json
+          4. {project}/.ai/logs/qa-report.json
+
+        [M51-① 2026-09-14 by m-qa] **门禁不自己跑 checker，只裁决一份"存量报告"**，
+        这是"唯一驱动链断"的本体。实测：`--run-id m50-verify` 那次 ① 不存在，
+        于是静默落到 ④，裁决了 `2026-08-25T13:24:48` 的报告（**20 天前**，
+        早于 T29/T51 的 6 个 checker 存在）⇒ Gate5 报「缺失 6 个 checker」，
+        同时健康分 100/100 —— **一份与判定自相矛盾的对外数字**。
+
+        现改为：**落到 ③④ 这类非本 run 来源时必须在契约里显式留痕**，且默认拒绝
+        以陈旧报告作出结论（需 `--allow-stale-report` 显式放行，与
+        `--allow-production-bypass` 同一套「必须显式」的治理范式）。
+        不伪造新鲜度：`self.report_source` / `self.report_timestamp` 如实记录，
+        由 `_gate5_scoring` 据此判定。
+        """
+        candidates = []
+        # 1) 同一 run 的采集产物优先（run 隔离语义：门禁只裁决本 run 的报告）
+        if self.run_dir:
+            candidates.append((os.path.join(self.run_dir, "qa-report.json"), "run"))
+        # 2) 同进程 / 显式注入
+        staged = os.environ.get("QA_RUN_REPORT_PATH", "")
+        if staged:
+            candidates.append((staged, "staged"))
+        # 3) 0-污染模式：QA 系统侧的项目日志目录
         if self.zero_pollution:
-            p = os.path.join(self.qa_system_root, ".ai", "logs", self.project_name, "qa-report.json")
-        else:
-            p = os.path.join(self.root, ".ai/logs/qa-report.json")
-        if not os.path.exists(p):
-            return None
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            logger.warning("加载 QA 报告失败: %s", p, exc_info=True)
-            return None
+            candidates.append((os.path.join(self.qa_system_root, ".ai", "logs",
+                                            self.project_name, "qa-report.json"), "0-pollution"))
+        # 4) 项目本地的权威报告（向后兼容）
+        candidates.append((os.path.join(self.root, ".ai/logs/qa-report.json"), "legacy"))
+
+        self.report_source = ""
+        self.report_timestamp = ""
+        for p, src in candidates:
+            if not os.path.exists(p):
+                continue
+            try:
+                with open(p, "r", encoding="utf-8-sig") as f:
+                    data = json.load(f)
+                self.report_path = p
+                self.report_source = src
+                self.report_timestamp = str(data.get("timestamp") or data.get("generated_at") or "")
+                if src != "run" and src != "staged":
+                    logger.warning(
+                        "M51-①：裁决对象不是本 run 的采集产物（来源=%s, 时间戳=%s）—— "
+                        "门禁不自己跑 checker，此结论基于存量报告：%s",
+                        src, self.report_timestamp or "未知", p)
+                return data
+            except Exception:
+                logger.warning("加载 QA 报告失败: %s", p, exc_info=True)
+        self.report_path = ""
+        return None
+
+    def _report_is_fresh(self) -> bool:
+        """本 run 采集产物 = 可信；其余来源需显式 allow_stale_report 放行。"""
+        if self.report_source in ("run", "staged"):
+            return True
+        return bool(getattr(self, "allow_stale_report", False))
 
     def _summary(self):
-        # 生产模式：所有门控自动通过
+        """汇总门禁结果 + 生产旁路（v1.1：旁路必须显式请求且留痕）。
+
+        修复 T03-R1：QA_ENV=production 不再自动放行。仅当
+        GateKeeper(allow_production_bypass=True) 或 QA_ALLOW_PRODUCTION_BYPASS=1
+        时才旁路，且结果中记录 bypass.applied=true。
+        """
         env = os.environ.get("QA_ENV", "").lower()
-        if env in ("production", "prod"):
+        env_wants_bypass = env in ("production", "prod")
+        flag_wants_bypass = bool(self.allow_production_bypass) or \
+            os.environ.get("QA_ALLOW_PRODUCTION_BYPASS", "") == "1"
+
+        if env_wants_bypass and flag_wants_bypass:
+            self.bypass = {"applied": True, "reason": "explicit-bypass",
+                           "env": env, "requested_by": "--allow-production-bypass"}
             for c in self.results:
-                c["passed"] = True
-                c["detail"] = "[production mode - auto pass]"
-            self.results.append({"name": "生产模式", "passed": True,
-                                "detail": "QA_ENV=production，门控自动通过"})
+                c["bypassed"] = True
+                c["original_passed"] = c["passed"]
+                c["blocking"] = False
+                c["detail"] = f"[BYPASSED] {c['detail']}"
+            self.results.append({
+                "id": "bypass", "name": "生产旁路", "passed": True, "severity": "WARN",
+                "blocking": False, "bypassed": True,
+                "detail": "QA_ENV=production + 显式 bypass，门禁未执行阻断（可从 JSON 审计）"})
+        elif env_wants_bypass and not flag_wants_bypass:
+            # 仅声明环境而未显式请求 → 不旁路，并留下可见信号
+            self.bypass = {"applied": False, "reason": "bypass-not-authorized",
+                           "env": env, "hint": "需 --allow-production-bypass 或 QA_ALLOW_PRODUCTION_BYPASS=1"}
+            self.results.append({
+                "id": "bypass", "name": "生产旁路请求", "passed": False, "severity": "WARN",
+                "blocking": False,
+                "detail": "QA_ENV=production 已设置但未授权旁路 → 门禁照常执行（v1.1 变更）"})
 
         passed = sum(1 for c in self.results if c["passed"])
         failed = len(self.results) - passed
-        result = {"passed": passed, "failed": failed, "block": failed > 0,
-                  "checks": self.results, "timestamp": datetime.now().isoformat(),
-                  "gate_architecture": "Gate0-Gate9", "version": "4.0"}
+        blocking_failed = [c for c in self.results if c.get("blocking")]
+        block = len(blocking_failed) > 0
 
-        if result["block"]:
+        result = {
+            "passed": passed,
+            "failed": failed,
+            "block": block,
+            "blocking_failed": [c["name"] for c in blocking_failed],
+            "checks": self.results,
+            "timestamp": datetime.now().isoformat(),
+            "gate_architecture": "Gate0-Gate9",
+            "version": "4.1",
+            "run_id": self.run_id,
+            "bypass": self.bypass,
+        }
+
+        if block and not self.readonly:
             try:
                 from qa_defect import create
                 report = self._load_report()
@@ -965,39 +1196,194 @@ class GateKeeper:
             except Exception:
                 logger.warning("创建不良品记录或发送 CB 收件箱失败", exc_info=True)
                 pass
+        elif block and self.readonly:
+            result["side_effects_skipped"] = ["qa_defect.create", "cb_inbox"]
         return result
+
+    def task_contract(self, report: dict) -> List[dict]:
+        """把 QA 报告转成编排系统可直接消费的任务列表（稳定 ID + 幂等键）。
+
+        task_id / idempotency_key = sha1(checker|rule|file|line|message)[:12]
+        —— 同一问题跨 run 复用同一 ID，可去重、可重试（T03-B4）。
+        """
+        import hashlib
+        tasks = []
+        for cid, cdata in (report or {}).get("checkers", {}).items():
+            if cdata.get("skipped") or cdata.get("errors", 0) == 0:
+                continue
+            sev = "WARN" if cid in META_CHECKERS else "BLOCKER"
+            for issue in cdata.get("issues", []):
+                rule = ""
+                m = re.match(r"^\[([A-Z][A-Z0-9-]*)\]", issue or "")
+                if m:
+                    rule = m.group(1)
+                file_path, line_no = _extract_location(issue or "")
+                raw = f"{cid}|{rule}|{file_path}|{line_no}|{issue}"
+                tid = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+                tasks.append({
+                    "task_id": tid,
+                    "idempotency_key": tid,
+                    "gate": _gate_for_checker(cid),
+                    "checker": cid,
+                    "rule_id": rule,
+                    "severity": sev,
+                    "blocking": sev == "BLOCKER",
+                    "file": file_path,
+                    "line": line_no,
+                    "message": (issue or "")[:300],
+                    "fix_hint": ".ai/prompts/CLAUDE.md",
+                    "depends_on": [],
+                })
+        return _normalize_tasks(tasks)
 
     def _post_to_cb_inbox(self, report: dict):
         inbox_path = os.path.join(self.root, ".ai/agents/cb/_tasks/inbox.json")
         os.makedirs(os.path.dirname(inbox_path), exist_ok=True)
         tasks = []
-        for cid, cdata in report.get("checkers", {}).items():
-            if cdata.get("skipped") or cdata.get("errors", 0) == 0:
-                continue
-            for i, issue in enumerate(cdata.get("issues", [])):
-                tasks.append({
-                    "taskId": f"{cid}-{i}",
-                    "checker": cid,
-                    "issue": issue,
-                    "severity": "BLOCKER" if cid not in META_CHECKERS else "WARN",
-                    "claude_path": ".ai/prompts/CLAUDE.md",
-                    "created_at": datetime.now().isoformat(),
-                    "gate": "gate7",
-                })
+        for t in self.task_contract(report):
+            tasks.append({
+                "taskId": t["task_id"],
+                "checker": t["checker"],
+                "issue": t["message"],
+                "severity": t["severity"],
+                "claude_path": ".ai/prompts/CLAUDE.md",
+                "created_at": datetime.now().isoformat(),
+                "gate": t["gate"],
+                "file": t["file"],
+                "line": t["line"],
+            })
         with open(inbox_path, "w", encoding="utf-8") as f:
             json.dump({"source": "qa-gate", "gate_arch": "Gate0-Gate9",
+                       "run_id": self.run_id,
                        "gate_timestamp": datetime.now().isoformat(), "tasks": tasks},
                       f, ensure_ascii=False, indent=2)
 
 
+def build_contract(gate: "GateKeeper", args, report, exit_code: int) -> dict:
+    """构建门禁 JSON 契约（schema_version 1.0）—— 编排系统的唯一机器接口。
+
+    最小字段集是稳定的；新增字段只做向后兼容追加。
+    """
+    checks = gate.results
+    gates = [{
+        "id": c.get("id", ""),
+        "name": c["name"],
+        "passed": bool(c["passed"]),
+        "severity": c.get("severity", "BLOCKER"),
+        "blocking": bool(c.get("blocking", False)),
+        "bypassed": bool(c.get("bypassed", False)),
+        "detail": c.get("detail", ""),
+    } for c in checks]
+
+    blocking_failed = [g for g in gates if g["blocking"]]
+    tasks = gate.task_contract(report)
+    blocking_tasks = [t for t in tasks if t["blocking"]]
+
+    if exit_code == 2:
+        verdict = "ERROR"
+    elif gate.bypass.get("applied"):
+        verdict = "BYPASS"
+    elif blocking_failed:
+        verdict = "DENY"
+    else:
+        verdict = "ALLOW"
+
+    return {
+        "schema_version": "1.0",
+        "run_id": gate.run_id,
+        "generated_at": datetime.now().isoformat(),
+        "tool": {"name": "qa-system", "version": "4.1",
+                 "gate_architecture": "Gate0-Gate9",
+                 "gate": args.gate or "all",
+                 "readonly": bool(getattr(gate, "readonly", False))},
+        "project": {"name": gate.project_name or os.path.basename(gate.root),
+                    "root": gate.root,
+                    "zero_pollution": gate.zero_pollution},
+        "verdict": verdict,
+        "exit_code": exit_code,
+        "blocked": verdict == "DENY",
+        "bypass": gate.bypass,
+        "source_report": {
+            "path": gate.report_path or "",
+            "found": report is not None,
+            "errors": (report or {}).get("errors"),
+            "total_issues": (report or {}).get("total_issues"),
+            "timestamp": (report or {}).get("timestamp"),
+            # M51-①：裁决对象来源与新鲜度必须可审计 —— 否则"缺 checker"会被误读为
+            # "checker 有问题"，而真因是门禁没跑 checker、裁决了一份存量报告。
+            "source": getattr(gate, "report_source", "") or "unknown",
+            "is_fresh": bool(getattr(gate, "report_source", "") in ("run", "staged")),
+            "allow_stale_report": bool(getattr(gate, "allow_stale_report", False)),
+        },
+        "summary": {
+            "gates_total": len(gates),
+            "gates_passed": sum(1 for g in gates if g["passed"]),
+            "gates_failed": sum(1 for g in gates if not g["passed"]),
+            "gates_blocking_failed": len(blocking_failed),
+            "tasks_total": len(tasks),
+            "tasks_blocking": len(blocking_tasks),
+            # T29 噪声分级：真信号占比（advisory 排除后）
+            "tasks_advisory": sum(1 for t in tasks if t["severity"] == "ADVISORY"),
+            "tasks_signal": sum(1 for t in tasks if t["severity"] != "ADVISORY"),
+            "signal_ratio": round(
+                sum(1 for t in tasks if t["severity"] != "ADVISORY") / max(len(tasks), 1), 4),
+        },
+        "gates": gates,
+        "tasks": tasks,
+        "artifacts": {},
+        "errors": list(getattr(gate, "errors", [])),
+    }
+
+
+def _validate_contract(contract: dict) -> bool:
+    """用 .ai/schemas/qa-gate-report.schema.json 自校验契约（jsonschema 可选）。
+
+    校验失败只打 WARN，不改变退出码 —— 契约漂移应被看到，但不阻断业务。
+    """
+    schema_path = os.path.join(_PROJECT_ROOT, ".ai", "schemas", "qa-gate-report.schema.json")
+    if not os.path.exists(schema_path):
+        return True
+    try:
+        import jsonschema
+    except ImportError:
+        return True
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        jsonschema.validate(contract, schema)
+        print("  [OK] 契约 schema 校验通过")
+        return True
+    except Exception as e:
+        print(f"  [WARN] 契约 schema 校验失败: {getattr(e, 'message', e)}")
+        return False
+
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="QA 总闸门 v4.0 — Gate0-Gate9 十层门禁")
-    parser.add_argument("--report", "-r", action="store_true", help="只报告不阻断")
+    parser = argparse.ArgumentParser(description="QA 总闸门 v4.1 — Gate0-Gate9 十层门禁（编排契约）")
+    parser.add_argument("--report", "-r", action="store_true", help="只报告不阻断（恒 exit 0）")
     parser.add_argument("--gate", "-g", type=str, default="",
                         help="仅运行指定 gate (如 --gate=3)")
     parser.add_argument("--project", "-p", type=str, default="",
                         help="目标项目根目录")
+    parser.add_argument("--json", type=str, default="",
+                        help="输出结构化门禁契约 JSON 到该路径（编排系统消费）")
+    parser.add_argument("--run-id", type=str, default="",
+                        help="运行标识：产物隔离到 {base}/.ai/runs/{run_id}/")
+    parser.add_argument("--runs-dir", type=str, default="",
+                        help="run 基准目录（默认 QA_SYSTEM_ROOT/.ai/runs）")
+    parser.add_argument("--allow-production-bypass", action="store_true",
+                        help="显式允许生产旁路（否则 QA_ENV=production 不再放行门禁）")
+    parser.add_argument("--readonly", action="store_true",
+                        help="只读审计：禁止写不良品登记与被审对象的 CB 收件箱（反向检验/审计用）")
+    parser.add_argument("--allow-stale-report", action="store_true",
+                        help="M51-①：显式允许以非本 run 的存量报告下结论"
+                             "（否则裁决对象必须来自 {run_dir}/qa-report.json）")
+    parser.add_argument("--no-alert", action="store_true",
+                        help="M51-(a)：强制关闭告警投递（关闭原因会记入契约 alerts.detail）")
+    parser.add_argument("--alert", action="store_true",
+                        help="M51-(a)：把 DENY 结论告警到达人（走 M24 告警桥，不另建通道）。"
+                             "QA_ENV=ci 时自动开启；--readonly 审计模式强制关闭（审计不得有外部副作用）")
     args = parser.parse_args()
 
     project_root = os.path.abspath(args.project or _PROJECT_ROOT)
@@ -1006,8 +1392,27 @@ def main():
         os.chdir(project_root)
     except OSError:
         logger.warning("无法切换 cwd 到项目根: %s", project_root)
-    gate = GateKeeper(project_root)
+    # M51-(a) 驱动策略：告警会向真人外发消息，故**默认不主动发**，但驱动必须存在：
+    #   - QA_ENV=ci（阻断上下文）⇒ 自动开启，门禁自己驱动，不依赖任何人记得跑脚本
+    #   - 交互/审计上下文 ⇒ 需显式 --alert；--readonly 强制关闭
+    # 无论开或关，`alerts.*` 都会写进契约 —— "DENY 没到达任何人"永远可见，不会静默。
+    _alert_on = bool(args.alert) or os.environ.get("QA_ENV", "").lower() == "ci"
+    if args.no_alert:
+        _alert_on = False
+    if args.readonly:
+        _alert_on = False
+    try:
+        gate = GateKeeper(project_root, run_id=args.run_id, runs_dir=args.runs_dir,
+                          allow_production_bypass=args.allow_production_bypass,
+                          readonly=args.readonly,
+                          allow_stale_report=args.allow_stale_report,
+                          alert=_alert_on)
+    except ValueError as e:
+        print(f"[ERROR] {e}")
+        sys.exit(2)
+    gate.errors = []
 
+    exit_code = 0
     if args.gate:
         # 单 gate 运行模式
         gate_map = {
@@ -1022,32 +1427,139 @@ def main():
         else:
             print(f"未知 Gate: {args.gate}")
             print(f"可用: {', '.join(sorted(gate_map.keys()))}")
-            sys.exit(1)
+            gate.errors.append(f"unknown-gate:{args.gate}")
+            exit_code = 2
     else:
         gate.run()
 
-    r = gate.results if args.gate else None
+    report = gate._load_report()
 
-    # 格式化输出
+    if exit_code == 0:
+        exit_code = 1 if any(c.get("blocking") for c in gate.results) else 0
+
+    if args.report:
+        exit_code = 0
+
+    # 格式化输出（人读）
     print("=" * 60)
-    print("  QA Gate v4.0 — Gate0-Gate9 十层门禁")
+    print("  QA Gate v4.1 — Gate0-Gate9 十层门禁")
     print("=" * 60)
 
-    checks = r if r else gate.results
-    for c in checks:
-        icon = "✅ PASS" if c["passed"] else "❌ FAIL"
+    for c in gate.results:
+        if c["passed"]:
+            icon = "✅ PASS"
+        elif c.get("severity") == "BLOCKER":
+            icon = "❌ FAIL"
+        else:
+            icon = "⚠️  FAIL"
         d = f" — {c['detail']}" if c.get("detail") else ""
         print(f"  {icon}  {c['name']}{d}")
 
-    if not args.gate and hasattr(gate, 'results'):
-        total = len(gate.results)
-        passed_count = sum(1 for c in gate.results if c["passed"])
-        blocked = total - passed_count > 0
-        print(f"\n  {passed_count}/{total} 门禁通过")
-        print(f"  Verdict: {'✅ ALLOW' if not blocked else '🚫 DENY'}")
+    total = len(gate.results)
+    passed_count = sum(1 for c in gate.results if c["passed"])
+    print(f"\n  {passed_count}/{total} 门禁通过")
+    if args.report:
+        print("  Verdict: (report-only, exit 0)")
+    else:
+        print(f"  Verdict: {({'0': '✅ ALLOW', '1': '🚫 DENY', '2': '⚠️  ERROR'})[str(exit_code)]}")
+    if gate.bypass.get("applied"):
+        print(f"  ⚠️  BYPASS 生效: {gate.bypass.get('reason')}（已写入 JSON 契约）")
 
-        if not args.report:
-            sys.exit(1 if blocked else 0)
+    # ── 噪声分级摘要（T29 要求③：让真信号浮到前面）──
+    _pre = build_contract(gate, args, report, exit_code)
+    _s = _pre["summary"]
+    print(f"\n  信号分级: 真信号 {_s['tasks_signal']} 条 / 噪声 {_s['tasks_advisory']} 条"
+          f"  → signal_ratio = {_s['signal_ratio']:.1%}")
+    if _s["tasks_signal"]:
+        from collections import Counter as _C
+        top = _C(t["checker"] for t in _pre["tasks"] if t["severity"] != "ADVISORY").most_common(5)
+        print(f"  真信号分布(前5): {top}")
+
+    # ── 结构化契约输出（编排系统消费）──
+    contract = _pre
+    json_path = args.json
+    if args.run_id and not json_path:
+        json_path = os.path.join(gate.run_dir, "gate-report.json")
+
+    # M51-(a)：门禁产出的消费者 —— DENY 必须能到达人（复用 M24 通道，不另建）。
+    # 放在写盘之前，使 alerts 结果成为契约的一部分（可审计"到底送出去没有"）。
+    contract["alerts"] = {"enabled": bool(gate.alert_enabled), "attempted": False,
+                          "delivered": False, "suppressed": True,
+                          "http_code": 0, "bridge": "", "detail": "未尝试",
+                          "driver": ("--alert" if args.alert else
+                                     ("QA_ENV=ci" if os.environ.get("QA_ENV", "").lower() == "ci" else
+                                      ("readonly" if args.readonly else "disabled")))}
+    _verdict = contract.get("verdict")
+    _pending_path = ""
+    if gate.alert_enabled and _verdict in ("DENY", "ERROR"):
+        if json_path:
+            contract["_contract_path"] = os.path.abspath(json_path)
+        try:
+            from qa_alert import notify
+            res = notify(contract)
+            contract["alerts"] = res
+            contract["alerts"]["driver"] = ("--alert" if args.alert else "QA_ENV=ci")
+            if res.get("delivered"):
+                print(f"\n  📣 已告警到达人（M24 通道 {res.get('bridge')}，HTTP {res.get('http_code')}）")
+            else:
+                # 不静默：没送到就明说，且让退出码无法把它当成功
+                print(f"\n  ❌ 告警未送达：{res.get('detail')}")
+                gate.errors.append(f"告警未送达: {res.get('detail')}")
+                if exit_code == 0:
+                    exit_code = 2
+        except Exception as e:
+            contract["alerts"]["detail"] = f"告警模块异常: {e}"
+            print(f"\n  ❌ 告警投递异常: {e}")
+            gate.errors.append(f"告警投递异常: {e}")
+            if exit_code == 0:
+                exit_code = 2
+    elif _verdict in ("DENY", "ERROR"):
+        # 未开启投递：DENY 也**不得静默消失**。落一条待投递台账（可被独立驱动补投），
+        # 并在契约里写明未投递的原因 —— 这样"结论没到达任何人"是可查的事实，而非空白。
+        contract["alerts"]["detail"] = ("投递未开启（driver=%s）：DENY 已记入待投递台账，"
+                                        "未到达人" % contract["alerts"]["driver"])
+        try:
+            _pending_dir = gate.run_dir or os.path.join(gate.qa_system_root or gate.root, ".ai", "runs")
+            os.makedirs(_pending_dir, exist_ok=True)
+            _pending_path = os.path.join(_pending_dir, "pending-alerts.jsonl")
+            with open(_pending_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps({
+                    "ts": contract.get("generated_at"),
+                    "verdict": _verdict, "exit_code": exit_code,
+                    "project": (contract.get("project") or {}).get("name"),
+                    "run_id": contract.get("run_id"),
+                    "summary": contract.get("summary"),
+                    "gate_report": os.path.abspath(json_path) if json_path else "",
+                    "driver": contract["alerts"]["driver"],
+                }, ensure_ascii=False) + "\n")
+            contract["alerts"]["pending_ledger"] = _pending_path
+            print(f"\n  ⚠️  {_verdict} 未告警到达人（driver={contract['alerts']['driver']}）"
+                  f" —— 已记入待投递台账 {_pending_path}")
+        except Exception as e:
+            contract["alerts"]["detail"] += f"；且写待投递台账失败: {e}"
+            print(f"\n  ⚠️  写待投递台账失败: {e}")
+    else:
+        contract["alerts"]["detail"] = f"verdict={_verdict} 未达告警门槛"
+
+    if json_path:
+        json_path = os.path.abspath(json_path)
+        os.makedirs(os.path.dirname(json_path) or ".", exist_ok=True)
+        contract["artifacts"]["gate_report"] = json_path
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(contract, f, ensure_ascii=False, indent=2)
+        print(f"\n  JSON contract: {json_path}")
+        _validate_contract(contract)
+    if args.run_id:
+        from qa_run import write_run_meta
+        run_meta = write_run_meta(gate.run_dir, run_id=args.run_id, command="qa_gate",
+                                  project_root=project_root,
+                                  gate=args.gate or "all",
+                                  verdict=contract["verdict"], exit_code=exit_code,
+                                  artifacts=contract["artifacts"])
+        if run_meta:
+            print(f"  run meta:      {run_meta}")
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

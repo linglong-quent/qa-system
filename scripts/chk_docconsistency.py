@@ -21,6 +21,10 @@ class DocConsistencyChecker:
     def check(self) -> Tuple[int, List[str]]:
         issues = []
         errors = 0
+        # M50：原先 `ast.parse(open(..., encoding="utf-8").read())` 被 `except Exception: continue`
+        # 包住 —— 带 BOM 的文件在 ast.parse(str) 下首行必抛 U+FEFF，于是该文件的公共符号
+        # 整体不进 public_symbols ⇒ 它的未文档化符号永远不会被发现（假阴性，实测 0 vs 1 条）。
+        parse_failed = []
 
         # 收集代码中的公共符号
         public_symbols = set()
@@ -34,13 +38,22 @@ class DocConsistencyChecker:
                         continue
                     fpath = os.path.join(root, f)
                     try:
-                        tree = ast.parse(open(fpath, "r", encoding="utf-8").read())
-                        for node in ast.walk(tree):
-                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                                if not node.name.startswith("_"):
-                                    public_symbols.add(node.name)
+                        src = open(fpath, "r", encoding="utf-8-sig", errors="replace").read()
                     except Exception:
+                        logger.warning("读取源文件失败: %s", fpath, exc_info=True)
+                        parse_failed.append((os.path.relpath(fpath, self.project_root), "读取失败"))
                         continue
+                    try:
+                        tree = ast.parse(src)
+                    except SyntaxError as exc:
+                        parse_failed.append(
+                            (os.path.relpath(fpath, self.project_root),
+                             f"{exc.msg} (line {exc.lineno})"))
+                        continue
+                    for node in ast.walk(tree):
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            if not node.name.startswith("_"):
+                                public_symbols.add(node.name)
 
         if not public_symbols:
             return 0, []
@@ -72,5 +85,13 @@ class DocConsistencyChecker:
             sample = list(sorted(undocumented))[:10]
             issues.append(f"[DOCCONSISTENCY] {len(undocumented)} 个公共符号文档中未引用: {', '.join(sample)}")
             errors += 1
+
+        # M50：解析失败不再静默（这些文件的公共符号根本没进入比对集合）
+        for rel, why in parse_failed[:25]:
+            issues.append(f"[PARSE-001] {rel}: 解析失败 —— {why}；其公共符号未参与文档一致性比对"
+                          f"（原行为：静默跳过，造成假阴性）")
+            errors += 1
+        if len(parse_failed) > 25:
+            issues.append(f"[PARSE-001] 另有 {len(parse_failed) - 25} 个文件解析失败，未逐条列出")
 
         return errors, issues

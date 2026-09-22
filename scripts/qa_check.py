@@ -42,20 +42,40 @@ if _SCRIPTS_DIR not in sys.path:
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)
 
 
-def run_all(project_root: str = _PROJECT_ROOT, bootstrap: bool = False):
-    """运行所有 checker 并报告"""
+def run_all(project_root: str = _PROJECT_ROOT, bootstrap: bool = False, run_id: str = "",
+            runs_dir: str = "", sarif_path: str = ""):
+    """运行所有 checker 并报告
+
+    run_id 非空时启用 run 隔离：报告写 {base}/.ai/runs/{run_id}/qa-report.json，
+    不再触碰 .ai/logs/ 下的权威报告（T03-R2 修复）。
+    """
     from chk_healthscorer import HealthScorer
 
-    scorer = HealthScorer(project_root, bootstrap=bootstrap)
+    run_dir = ""
+    if run_id:
+        from qa_run import resolve_run_dir
+        run_dir = resolve_run_dir(run_id, project_root, runs_dir=runs_dir)
+
+    scorer = HealthScorer(project_root, bootstrap=bootstrap, run_dir=run_dir)
     report = scorer.run_all()
 
-    # 保存报告
+    # 保存报告（显式；run_dir 为空时落权威路径，保持向后兼容）
     report_path = scorer.save_report(report)
+
+    # SARIF 2.1.0 出口（供 GitHub Code Scanning / 编排系统消费）
+    if sarif_path:
+        sarif_path = os.path.abspath(sarif_path)
+        os.makedirs(os.path.dirname(sarif_path) or ".", exist_ok=True)
+        with open(sarif_path, "w", encoding="utf-8") as f:
+            json.dump(scorer.to_sarif(report), f, ensure_ascii=False, indent=2)
+        print(f"SARIF saved: {sarif_path}")
 
     # 输出摘要
     print(f"QA System Check — {project_root}")
     print(f"  Profile:    {report['profile']}")
     print(f"  Bootstrap:  {report['bootstrap']}")
+    if run_id:
+        print(f"  RunId:      {run_id}")
     print(f"  Errors:     {report['errors']}")
     print(f"  Issues:     {report['total_issues']}")
     print(f"  Blocked:    {report['blocked']}")
@@ -129,6 +149,22 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):  # noqa: S
                     break
                 except Exception:
                     logging.warning("加载项目配置失败: %s", cp, exc_info=True)
+
+    # 自动探测: 环境变量未设置时, 按 project_root 目录名在 QA-System 下定位项目配置
+    # (避免漏加载 magic_whitelist 等规则导致全量误报)
+    if not config:
+        try:
+            from chk_load_yaml import load_yaml
+            base = qa_system_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            auto_name = os.path.basename(os.path.normpath(project_root))
+            for suffix in ("_local.yaml", ".yaml"):
+                cp = os.path.join(base, ".ai", "projects", f"{auto_name}{suffix}")
+                if os.path.exists(cp):
+                    config = load_yaml(cp)
+                    logging.info("自动加载项目配置: %s", cp)
+                    break
+        except Exception:
+            logging.warning("自动加载项目配置失败", exc_info=True)
 
     # 项目本地配置（补充，向后兼容）
     if not config:
@@ -214,6 +250,10 @@ def main():
                         help="all|health|inplace|lookahead|secret|deadcode|cyclic|code-ban|boundary|prod|config|gates|claude|codestyle|largefiles|naming|solid|plugins|list")
     parser.add_argument("--project-root", default=_PROJECT_ROOT)
     parser.add_argument("--bootstrap", action="store_true", help="不阻断，仅报告")
+    parser.add_argument("--run-id", default="",
+                        help="运行标识：产物隔离到 {base}/.ai/runs/{run_id}/（编排契约 v1.1）")
+    parser.add_argument("--runs-dir", default="", help="run 基准目录（默认 QA_SYSTEM_ROOT/.ai/runs）")
+    parser.add_argument("--sarif", default="", help="同时输出 SARIF 2.1.0 报告到该路径")
     args = parser.parse_args()
 
     # 0-污染模式: 切换 cwd 到目标项目, 保证 checker 相对 scan_dirs 解析正确
@@ -230,11 +270,11 @@ def main():
         sys.exit(0)
 
     if cmd == "health":
-        report = run_all(project_root, args.bootstrap)
+        report = run_all(project_root, args.bootstrap, args.run_id, args.runs_dir, args.sarif)
         sys.exit(1 if report["errors"] > 0 and not args.bootstrap else 0)
 
     if cmd == "all":
-        report = run_all(project_root, args.bootstrap)
+        report = run_all(project_root, args.bootstrap, args.run_id, args.runs_dir, args.sarif)
         sys.exit(1 if report["errors"] > 0 and not args.bootstrap else 0)
 
     SINGLE = ["inplace", "lookahead", "secret", "deadcode", "cyclic", "code-ban",

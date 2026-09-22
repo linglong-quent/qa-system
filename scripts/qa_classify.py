@@ -109,16 +109,66 @@ def _extract_location(text: str):
     return m.group(1), line
 
 
+def _resolve_report_path(project_root: str, explicit: str = "", run_dir: str = "") -> str:
+    """报告定位（v1.1 修复 T03-B6：不再写死 QA-System 自身路径）
+
+    顺序：显式 --report > 本 run 的采集产物 > QA_RUN_REPORT_PATH > 0-污染项目日志 > 项目本地
+    """
+    if explicit:
+        return os.path.abspath(explicit)
+    cands = []
+    if run_dir:
+        cands.append(os.path.join(run_dir, "qa-report.json"))
+    staged = os.environ.get("QA_RUN_REPORT_PATH", "")
+    if staged:
+        cands.append(staged)
+    root = os.environ.get("QA_SYSTEM_ROOT", "")
+    name = os.environ.get("QA_PROJECT_NAME", "")
+    if root and name:
+        cands.append(os.path.join(root, ".ai", "logs", name, "qa-report.json"))
+    cands.append(os.path.join(project_root, ".ai/logs/qa-report.json"))
+    for c in cands:
+        if os.path.exists(c):
+            return c
+    return ""
+
+
+def _task_id(cid: str, message: str, file_path: str, line) -> str:
+    """稳定任务 ID（跨 run 幂等，T03-B4）"""
+    import hashlib
+    raw = f"{cid}|{file_path}|{line}|{message}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
 def main():
-    report_path = os.path.join(_PROJECT_ROOT, ".ai/logs/qa-report.json")
-    if not os.path.exists(report_path):
+    import argparse
+    parser = argparse.ArgumentParser(description="QA 问题分类器")
+    parser.add_argument("--project", "-p", default=_PROJECT_ROOT, help="目标项目根目录")
+    parser.add_argument("--report", default="", help="QA 报告路径（默认自动定位）")
+    parser.add_argument("--run-id", default="", help="run 标识：pending.json 写入 run 目录")
+    parser.add_argument("--runs-dir", default="", help="run 基准目录")
+    args = parser.parse_args()
+
+    project_root = os.path.abspath(args.project)
+    run_dir = ""
+    if args.run_id:
+        from qa_run import resolve_run_dir
+        run_dir = resolve_run_dir(args.run_id, project_root, runs_dir=args.runs_dir)
+    report_path = _resolve_report_path(project_root, args.report, run_dir)
+    if not report_path:
         print("无 QA 报告。请先运行 python scripts/qa_check.py health")
         return
+    print(f"报告: {report_path}")
 
     with open(report_path, "r", encoding="utf-8") as f:
         report = json.load(f)
 
     result = classify(report)
+    result["run_id"] = args.run_id
+    result["source_report"] = report_path
+    for t in result["classified_tasks"]:
+        t["task_id"] = _task_id(t["checker"], t["message"], t.get("file", ""), t.get("line", 0))
+        t["idempotency_key"] = t["task_id"]
 
     # 输出摘要
     print("=== QA 问题分类 ===")
@@ -153,9 +203,14 @@ def main():
             print(f"    {cat}: {count}")
 
     # 保存到 .ai/fixes/pending.json（智能体读取）
-    fix_dir = os.path.join(_PROJECT_ROOT, ".ai/fixes")
+    # run-id 指定时产物隔离到 run 目录，避免并行 DAG 分支互相覆盖
+    if run_dir:
+        fix_dir = run_dir
+    else:
+        fix_dir = os.path.join(project_root, ".ai/fixes")
     os.makedirs(fix_dir, exist_ok=True)
-    with open(os.path.join(fix_dir, "pending.json"), "w", encoding="utf-8") as f:
+    pending_path = os.path.join(fix_dir, "pending.json")
+    with open(pending_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     # 分类统计单独保存
@@ -166,7 +221,14 @@ def main():
             "by_category": result["category_summary"],
         }, f, ensure_ascii=False, indent=2)
 
-    print(f"\n  分类结果已保存到 .ai/fixes/pending.json")
+    if args.run_id:
+        from qa_run import write_run_meta
+        write_run_meta(fix_dir, run_id=args.run_id, command="qa_classify",
+                       project_root=project_root,
+                       tasks_total=len(result["classified_tasks"]),
+                       artifacts={"pending": pending_path})
+
+    print(f"\n  分类结果已保存到 {pending_path}")
     print(f"  智能体读取此文件后按指导修复")
 
 

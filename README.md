@@ -41,7 +41,7 @@ python scripts/qa_gate.py --gate=3.1   # 框架手册自审
 python scripts/qa_setup.py --project /path/to/project --local-windows
 
 # 设置环境变量（替代硬编码路径）
-set QA_SYSTEM_ROOT=E:\WB\QA-System
+set QA_SYSTEM_ROOT=D:\WB\QA-System
 ```
 
 ## 使用（CI 引用）

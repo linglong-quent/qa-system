@@ -1,3 +1,4 @@
+import os
 from typing import List
 from chk_codeban_a import CodeBanBase
 
@@ -153,6 +154,15 @@ class CodeBanMid(CodeBanBase):
         import ast as ast_module
 
         issues = []
+        # 配置文件豁免：SSOT 配置模块（data_paths/config/settings 等）内允许路径常量
+        cfg_patterns = tuple(p.lower() for p in self.config_file_patterns)
+
+        def _is_config_file(fpath: str) -> bool:
+            if not cfg_patterns:
+                return False
+            base = os.path.basename(fpath).lower()
+            return any(p in base for p in cfg_patterns)
+
         for fpath in py_files:
             tree = self._parse_ast(fpath)
             if tree is None:
@@ -168,6 +178,8 @@ class CodeBanMid(CodeBanBase):
                 if any(val.startswith(p) or val.startswith(p.replace("\\", "/")) for p in self.path_prefixes):
                     if self._is_in_main_block(node):
                         continue
+                    if _is_config_file(fpath):
+                        continue
                     issues.append(
                         f"[BAN-5] {fpath}:{node.lineno} 硬编码路径 '{val[:40]}' -> "
                         f"应用配置文件或环境变量 (os.path.join / pathlib)"
@@ -181,11 +193,22 @@ class CodeBanMid(CodeBanBase):
         import ast as ast_module
 
         issues = []
+        # 配置文件豁免：SSOT 配置模块内的数值视为配置值而非魔法数字
+        cfg_patterns = tuple(p.lower() for p in self.config_file_patterns)
+
+        def _is_config_file(fpath: str) -> bool:
+            if not cfg_patterns:
+                return False
+            base = os.path.basename(fpath).lower()
+            return any(p in base for p in cfg_patterns)
+
         for fpath in py_files:
             tree = self._parse_ast(fpath)
             if tree is None:
                 continue
             self._annotate_parents(tree)
+            if _is_config_file(fpath):
+                continue
             for node in ast_module.walk(tree):
                 if not isinstance(node, ast_module.Constant):
                     continue
@@ -207,12 +230,15 @@ class CodeBanMid(CodeBanBase):
                 if parent and isinstance(parent, (ast_module.arguments, ast_module.arg)):
                     continue
                 # 跳过赋值语句中变量名包含特定关键字的（如 _PORT, _TIMEOUT, _MAX, _THRESHOLD）
-                if parent and isinstance(parent, ast_module.Assign):
+                # 以及任意 UPPER_CASE 命名常量赋值/注解赋值 (对齐 CI RULE-5b 豁免逻辑,
+                # 修复"命名常量定义被误报为魔法数字"的已知启发式缺陷)
+                if parent and isinstance(parent, (ast_module.Assign, ast_module.AnnAssign)):
                     _is_named_constant = False
-                    for target in parent.targets:
+                    targets = parent.targets if isinstance(parent, ast_module.Assign) else [parent.target]
+                    for target in targets:
                         if isinstance(target, ast_module.Name):
-                            name = target.id.upper()
-                            if any(kw in name for kw in self.magic_keyword_whitelist):
+                            name = target.id
+                            if name.isupper() or any(kw in name.upper() for kw in self.magic_keyword_whitelist):
                                 _is_named_constant = True
                                 break
                     if _is_named_constant:

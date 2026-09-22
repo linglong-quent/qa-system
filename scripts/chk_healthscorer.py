@@ -11,7 +11,7 @@
   每个文件需导出 check(config: dict, project_root: str) -> (errors: int, issues: List[str])
   在 review-rules.yaml 中 plugins 段配置启用/禁用。
 """
-import os, re, json, logging, importlib, importlib.util, sys
+import os, re, json, logging, importlib, importlib.util, sys, uuid
 from datetime import datetime
 from typing import List, Tuple
 
@@ -42,16 +42,29 @@ from chk_fusedetector import FuseDetectorChecker
 from chk_docconsistency import DocConsistencyChecker
 from chk_namingconflict import NamingConflictChecker
 from chk_solid import SolidChecker
+from chk_semantic import SemanticTruthChecker
+from chk_docstrcode import DocstringCodeChecker
+from chk_runtime import RuntimeDriftChecker
+from chk_vcs import VcsGovernanceChecker
+from chk_blindspot import BlindSpotChecker
+from chk_container import ContainerPlaneChecker
 
 
 class HealthScorer:
     """QA 系统核心评分引擎 — V3.0 0-污染模式"""
 
     def __init__(self, project_root: str, bootstrap: bool = False, profile: str = "",  # noqa: STYLE-06
-                 qa_system_root: str = "", project_name: str = ""):
+                 qa_system_root: str = "", project_name: str = "",
+                 run_dir: str = "", persist: bool = True):
         self.project_root = os.path.abspath(project_root)
         self.qa_system_root = qa_system_root or os.environ.get("QA_SYSTEM_ROOT", "")
         self.project_name = project_name or os.environ.get("QA_PROJECT_NAME", "")
+        # ── 产物隔离（编排契约 v1.1）──────────────────────────────
+        # run_dir    : 显式 run 目录 → 报告写 {run_dir}/qa-report.json（并行安全）
+        # persist=False: 不落权威报告，改写进程内暂存目录（供 quality_gates 读取）
+        self.run_dir = os.path.abspath(run_dir) if run_dir else ""
+        self.persist = bool(persist)
+        self.report_path = ""
 
         # 0-污染模式：配置在 QA 系统中，不在项目里
         # 优先查找 .ai/projects/{name}_local.yaml（0-污染模式标准命名）
@@ -157,6 +170,32 @@ class HealthScorer:
         sd_cfg = self.config.get("solid_check", {})
         self._enabled["solid"] = _add("solid", SolidChecker(sd_cfg, self.project_root), "SOLID 五原则")
 
+        # ── T29 盲区规则集（七类盲区 + 追加类）────────────────────
+        # ① 语义真实性：伪造计算 / 空壳假成功 / 静默降级
+        st_cfg = self.config.get("semantic_truth_check", {})
+        self._enabled["semantic_truth"] = _add(
+            "semantic_truth", SemanticTruthChecker(st_cfg, self.project_root), "语义真实性")
+        # 追加类：docstring 内可执行代码 / 未绑定名 / 改名手术完整性
+        dc_cfg = self.config.get("docstring_code_check", {})
+        self._enabled["docstring_code"] = _add(
+            "docstring_code", DocstringCodeChecker(dc_cfg, self.project_root), "docstring代码与绑定")
+        # ② 运行态与进程层：代码-进程漂移 / 端点无守护
+        rd_cfg = self.config.get("runtime_drift_check", {})
+        self._enabled["runtime_drift"] = _add(
+            "runtime_drift", RuntimeDriftChecker(rd_cfg, self.project_root), "运行态与进程层")
+        # ③ 版本控制治理：脱节 / 关键目录 0 入库
+        vc_cfg = self.config.get("vcs_governance_check", {})
+        self._enabled["vcs_governance"] = _add(
+            "vcs_governance", VcsGovernanceChecker(vc_cfg, self.project_root), "版本控制治理")
+        # ④⑤⑥+⑦ 克隆 / 声明 / 构建 / 路径
+        # T51 新增：容器平面（Docker 恢复后启用；不可用时自行 skipped）
+        cp_cfg = self.config.get("container_plane_check", {})
+        self._enabled["container_plane"] = _add(
+            "container_plane", ContainerPlaneChecker(cp_cfg, self.project_root), "容器平面")
+        bs_cfg = self.config.get("blindspot_check", {})
+        self._enabled["blindspot"] = _add(
+            "blindspot", BlindSpotChecker(bs_cfg, self.project_root), "克隆/声明/构建/路径")
+
         self._enabled["production"] = _add("production", ProductionChecker(pr_cfg, self.project_root), "生产就绪")
 
         # 质量门控
@@ -229,11 +268,16 @@ class HealthScorer:
     def _is_enabled(self, cid: str) -> bool:
         return self._enabled.get(cid, True)
 
-    def run_all(self) -> dict:  # noqa: STYLE-06
+    def run_all(self, save: bool = True) -> dict:  # noqa: STYLE-06
         """运行所有 checker (A + B)，返回统一报告
-        
+
         特别处理: quality_gates 需要读取当前报告，因此在报告保存后再运行
+
+        save=False 时不落权威报告（改写进程内暂存目录），供 qa_self_test 等
+        "只探测不产出"的调用方使用 —— 修复 T03-R2「跑门禁覆盖权威报告」。
+        run-all() 本身不再隐式覆盖 .ai/logs/qa-report.json 之外的路径。
         """
+        self._save_enabled = bool(save)
         all_issues: List[str] = []
         total_errors = 0
         checker_results = {}
@@ -262,7 +306,11 @@ class HealthScorer:
                         "details": self._parse_issue_details(issues or []),
                     }
                     total_errors += errors
-                    all_issues.extend(issues or [])
+                    if errors:
+                        all_issues.extend(issues or [])
+                    else:
+                        # v1.1: 通过态文案进 notes，不再污染 all_issues（T03-R3）
+                        checker_results[cid]["notes"] = issues or []
                 except Exception as e:
                     checker_results[cid] = {"label": label, "error": str(e)}
                     total_errors += 1
@@ -276,7 +324,10 @@ class HealthScorer:
                     "details": self._parse_issue_details(issues or []),
                 }
                 total_errors += errors
-                all_issues.extend(issues or [])
+                if errors:
+                    all_issues.extend(issues or [])
+                else:
+                    checker_results[cid]["notes"] = issues or []
             except Exception as e:
                 checker_results[cid] = {"label": label, "error": str(e)}
                 total_errors += 1
@@ -296,7 +347,7 @@ class HealthScorer:
 
         # 先保存报告，再运行 quality_gates（此时报告已就绪）
         if quality_gates_info:
-            self.save_report(report)
+            self.save_report(report, staged=True)
             cid, instance, label = quality_gates_info
             try:
                 errors, issues = instance.check()
@@ -305,7 +356,10 @@ class HealthScorer:
                     "details": self._parse_issue_details(issues or []),
                 }
                 total_errors += errors
-                all_issues.extend(issues or [])
+                if errors:
+                    all_issues.extend(issues or [])
+                else:
+                    checker_results[cid]["notes"] = issues or []
             except Exception as e:
                 checker_results[cid] = {"label": label, "error": str(e)}
                 total_errors += 1
@@ -316,6 +370,16 @@ class HealthScorer:
             report["total_issues"] = len(all_issues)
             report["blocked"] = total_errors > 0 and not self.bootstrap
             report["all_issues"] = all_issues
+
+            # [M51-① 2026-09-14 by m-qa] quality_gates 的结果必须落进**同一个产物**。
+            # 原实现只在上面 save_report(staged=True) 存过一次盘（那次在 quality_gates
+            # **运行之前**，为的是让它能读到报告），之后仅更新内存并 return ——
+            # 于是**磁盘上的报告永远不含 quality_gates**。
+            # 下游 qa_gate `missing = (CODE_CHECKERS|META_CHECKERS) - ran` 因此永不为空
+            # ⇒ **Gate5 恒 FAIL**，阻断恒真、判据失去分辨力（"恒红"是"恒绿"的镜像；
+            # 实测三份报告 legacy/run/fxproj 全部缺失 quality_gates）。
+            # 这里补一次存盘，使产物与内存一致。
+            self.save_report(report, staged=True)
 
         return report
 
@@ -486,19 +550,48 @@ class HealthScorer:
     def is_production(self) -> bool:
         return self._detect_environment() == "production"
 
-    def save_report(self, report: dict) -> str:
-        """保存报告（0-污染模式 → QA 系统目录）"""
-        # QA 系统内目录
+    def canonical_report_dir(self) -> str:
+        """权威报告目录（0-污染模式 → QA 系统目录）"""
         if self.qa_system_root and self.project_name:
-            report_dir = os.path.join(self.qa_system_root, f".ai/logs/{self.project_name}")
+            return os.path.join(self.qa_system_root, f".ai/logs/{self.project_name}")
+        return os.path.join(self.project_root, ".ai/logs")
+
+    def save_report(self, report: dict, staged: bool = False) -> str:
+        """保存报告。
+
+        路径决策（编排契约 v1.1，T03-R2/T03-R3 修复）：
+          1. run_dir 指定   → {run_dir}/qa-report.json      （并行安全，按 run-id 隔离）
+          2. persist=False  → 进程内暂存目录（不覆盖任何权威报告）
+          3. 其它           → {canonical}/qa-report.json    （向后兼容）
+
+        无论落到哪里，都通过 QA_RUN_REPORT_PATH 暴露给同进程内的
+        quality_gates（它需要在报告落盘后读取）。
+        """
+        if self.run_dir:
+            report_dir = self.run_dir
+        elif not getattr(self, "persist", True):
+            import tempfile
+            report_dir = self._staging_dir()
         else:
-            report_dir = os.path.join(self.project_root, ".ai/logs")
+            report_dir = self.canonical_report_dir()
         os.makedirs(report_dir, exist_ok=True)
         path = os.path.join(report_dir, "qa-report.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        self._validate_schema(report)
+        self.report_path = path
+        os.environ["QA_RUN_REPORT_PATH"] = path
+        if not staged:
+            self._validate_schema(report)
         return path
+
+    def _staging_dir(self) -> str:
+        """非持久化模式下的进程内暂存目录（每次进程唯一，互不覆盖）"""
+        if not getattr(self, "_staging", ""):
+            base = os.path.join(self.project_root, ".ai", ".staging")
+            os.makedirs(base, exist_ok=True)
+            self._staging = os.path.join(base, f"run-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+            os.makedirs(self._staging, exist_ok=True)
+        return self._staging
 
     def _validate_schema(self, report: dict):
         """验证报告是否符合 qa-report.schema.json"""

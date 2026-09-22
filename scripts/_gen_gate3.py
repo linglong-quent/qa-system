@@ -1,7 +1,7 @@
 """提取越域import违规列表"""
 import re, os
 
-root = r'E:\WB\linglong'
+root = r'D:\WB\linglong'
 config = {
     "import_exempt": [
         "access.data.adapters", "access.decision.engines",

@@ -165,11 +165,20 @@ class QualityGateChecker:
         return errors, issues
 
     def _load_report(self) -> dict:
-        """加载 QA 报告（支持 0-污染模式：优先读 QA-System/.ai/logs/{project_name}/qa-report.json）"""
+        """加载 QA 报告（支持 0-污染模式 + run-id 隔离）
+
+        查找顺序（编排契约 v1.1）：
+          1. QA_RUN_REPORT_PATH — 同进程内 HealthScorer 刚落盘的报告（run 隔离安全）
+          2. {QA_SYSTEM_ROOT}/.ai/logs/{project_name}/qa-report.json
+          3. {project_root}/.ai/logs/qa-report.json
+        """
+        staged = os.environ.get("QA_RUN_REPORT_PATH", "")
         qa_system_root = os.environ.get("QA_SYSTEM_ROOT", "")
         project_name = os.environ.get("QA_PROJECT_NAME", "")
-        
+
         candidates = []
+        if staged:
+            candidates.append(staged)
         if qa_system_root and project_name:
             candidates.append(os.path.join(qa_system_root, ".ai", "logs", project_name, "qa-report.json"))
         candidates.append(os.path.join(self.project_root, ".ai", "logs", "qa-report.json"))

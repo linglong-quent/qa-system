@@ -62,7 +62,8 @@ class CodeBanBase:
         return py_files
 
     def _parse_ast(self, file_path: str):
-        with open(file_path, encoding="utf-8") as f:
+        # utf-8-sig: 跳过 UTF-8 BOM，避免 BOM 文件报 invalid non-printable character U+FEFF
+        with open(file_path, encoding="utf-8-sig") as f:
             return compile(f.read(), file_path, "exec", ast.PyCF_ONLY_AST)
 
     def _is_in_main_block(self, node) -> bool:

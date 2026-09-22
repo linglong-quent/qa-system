@@ -1,15 +1,23 @@
 # agent-boundary.yaml — AI Agent 权限边界（Gate6）
 # 框架手册：KUN/CB 不越界编码，各司其职
-version: '4.0'
-last_updated: '2026-07-20'
+# 2026-09-18 v4.1 修正：
+#   - 路径漂移三处：src/** → domain/**、config/rules/ → config/rule/、docs/ADR/ → docs/03_决策记录/
+#   - 新增 hdm_paths：AGENTS.md / CLAUDE.md / 本 yaml 列为 HUMAN_ONLY，任何 Agent 写入即 BLOCKER
+#   - 依据：REPORT-LINGLONG系统架构全面审查_20260918.md P0 发现 4
+# 2026-09-22 v4.2 新增（依金哥令「后面代码和文档规范得引入aud」）：
+#   - 新增 AUD（独立第三方审计师）角色：全量只读、写入仅限审计报告与自身身份卡
+#   - 新增 Gate9 规则：L1 级核心交易链路代码合并必须 AUD 人工审批签字
+#   - 依据：AUD审计师引入方案_20260922.md ／ IDENT-13_AUD审计师.md
+version: '4.2'
+last_updated: '2026-09-22'
 agents:
   - name: "KUN"
     role: "架构师"
     allowed_operations:
       - "创建/修改 .md 文档"
       - "创建/修改 .schema.json 契约"
-      - "创建/修改 docs/ADR/ 下的架构决策"
-      - "创建/修改 config/rules/ 下的规则表"
+      - "创建/修改 docs/03_决策记录/ 下的架构决策"
+      - "创建/修改 config/rule/ 下的规则表"
     forbidden_operations:
       - "编写任何 .py 文件"
       - "编写 .sh/.bat 脚本"
@@ -18,9 +26,9 @@ agents:
       - "docs/**/*.md"
       - "docs/**/*.json"
       - "docs/**/*.yaml"
-      - "config/rules/**/*.yaml"
+      - "config/rule/**/*.yaml"
     read_paths:
-      - "src/**/*.py"
+      - "domain/**/*.py"
       - "scripts/**/*.py"
   - name: "CB"
     role: "程序员"
@@ -32,11 +40,11 @@ agents:
       - "编写 docs/proposals/ 提案"
       - "提交修复 PR"
     forbidden_operations:
-      - "修改 config/rules/*.yaml 规则表"
-      - "修改 docs/ADR/ 架构决策"
+      - "修改 config/rule/*.yaml 规则表"
+      - "修改 docs/03_决策记录/ 架构决策"
       - "直接覆写 WORM 归档"
     write_paths:
-      - "src/**/*.py"
+      - "domain/**/*.py"
       - "scripts/**/*.py"
       - "tests/**/*.py"
       - ".github/workflows/*.yml"
@@ -44,21 +52,74 @@ agents:
     read_paths:
       - "docs/**/*"
     proposal_only:
-      - "config/rules/"
+      - "config/rule/"
       - "config/params*.json"
   - name: "金哥"
     role: "决策者"
     allowed_operations:
       - "审批/拒绝任何变更"
-      - "修改 config/rules/"
+      - "修改 config/rule/"
       - "修改资金管理参数"
     automation: "不写代码，不 review 代码 diff，只审文档"
+  - name: "AUD"
+    role: "独立第三方审计师"
+    independent: true
+    veto_power: true
+    allowed_operations:
+      - "独立审计 KUN 文档产出（完整性/一致性/形值分离/与代码对齐）"
+      - "独立审计 CB 代码产出（安全性/正确性/性能/形值分离/依赖安全）"
+      - "合规审计（监管红线/审计留痕/密钥管理/数据留存）"
+      - "对不通过的文档/代码行使一票否决并要求返工（只审计，不改）"
+      - "L1 级核心交易链路代码合并的 Gate9 人工审批签字"
+    forbidden_operations:
+      - "编写/修改任何业务代码（domain/**/*.py、scripts/**/*.py、tests/**/*.py）"
+      - "编写/修改业务文档（linglong/docs/24h工作流体系/0[1-4]_*/**/*.md 业务规则）"
+      - "修改 config/rule/*.yaml 规则表"
+      - "修改 .github/workflows/ 与 CI 配置"
+      - "参与日常开发决策/出架构方案/派单调度"
+      - "替作者修复被审出的问题（问题由 KUN/CB 本人修复，AUD 只复审）"
+    # 特殊权限：审计需要全量可见——可读取全部文档/代码/配置路径，但写入仅限审计产出
+    read_paths:
+      - "linglong/docs/**"
+      - "TDX/docs/**"
+      - "domain/**/*.py"
+      - "scripts/**/*.py"
+      - "tests/**/*.py"
+      - ".ai/config/**"
+      - "QA-System/**"
+      - "linglong/config/rule/**"
+      - ".github/workflows/**"
+      - "linglong/requirements.txt"
+      - "linglong/pyproject.toml"
+    write_paths:
+      - "linglong/docs/24h工作流体系/_评审与报告/**/*.md"
+      - "TDX/docs/01_核心文档/IDENT-13*.md"
+    proposal_only: []
 boundary_enforcement:
   enabled: true
   severity: "BLOCKER"
   gate: "Gate6"
+  # 宪法级文件：任何 Agent（含 KUN/CB）写入均需金哥审批，禁止 Agent 直接修改
+  hdm_paths:
+    - "AGENTS.md"
+    - "CLAUDE.md"
+    - ".ai/config/agent-boundary.yaml"
   auto_detect:
     - "KUN 写入 .py 文件 → BLOCKER"
-    - "CB 写入 config/rules/*.yaml → BLOCKER"
-    - "CB 写入 docs/ADR/ → BLOCKER"
+    - "CB 写入 config/rule/*.yaml → BLOCKER"
+    - "CB 写入 docs/03_决策记录/ → BLOCKER"
+    - "任何 Agent 写入 hdm_paths 下列文件 → BLOCKER（需金哥审批）"
     - "任何 Agent 写入 WORM 归档 → BLOCKER"
+    - "AUD 写入 domain/**/*.py 或 scripts/**/*.py → BLOCKER（AUD 只审计不改代码）"
+    - "AUD 写入 linglong/docs/24h工作流体系/0[1-4]_*/**/*.md → BLOCKER（AUD 禁写业务文档，仅可写 _评审与报告/）"
+    - "AUD 写入非 _评审与报告/ 路径的 .md → BLOCKER"
+  gate9_human_approval:
+    # Gate9（最终放行门）人工审批环节：AUD 独立审计签字
+    enabled: true
+    auditor: "AUD"
+    rules:
+      - "L1 级核心交易链路代码（报单/风控/双签/幂等/状态机）合并必须 AUD 签字 → 未签字 BLOCKER"
+      - "L2 级代码按比例抽审（比例取值 → L4-03），抽中未出审计意见 → WARN"
+      - "L3 级机检全绿即视为通过，AUD 保留抽查权"
+      - "文档审计超时（时限取值→L4-03）未出结论 ⇒ 记录'AUD未审'挂账，按Gate9默认流程放行，但S1跟踪、金哥周复核；L1级代码不得超时放行，确需延长⇒升级金哥"
+      - "AUD 否决后未经返工复审通过的 PR → BLOCKER"
