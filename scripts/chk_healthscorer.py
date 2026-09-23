@@ -50,7 +50,6 @@ from chk_blindspot import BlindSpotChecker
 from chk_container import ContainerPlaneChecker
 
 
-
 class HealthScorer:
     """QA 系统核心评分引擎 — V3.0 0-污染模式"""
 
@@ -67,11 +66,145 @@ class HealthScorer:
         self.persist = bool(persist)
         self.report_path = ""
 
+        # 0-污染模式：配置在 QA 系统中，不在项目里
+        # 优先查找 .ai/projects/{name}_local.yaml（0-污染模式标准命名）
+        # 其次查找 .ai/projects/{name}.yaml（向后兼容）
+        config_path = ""
+        if self.qa_system_root and self.project_name:
+            candidates = [
+                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}_local.yaml"),
+                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}.yaml"),
+            ]
+            for cp in candidates:
+                if os.path.exists(cp):
+                    config_path = cp
+                    break
+            if not config_path:
+                # fallback：QA-System 自身配置（仅用于 QA 系统自检场景）
+                qa_self = os.path.join(self.qa_system_root, ".ai/config/review-rules.yaml")
+                if os.path.exists(qa_self):
+                    config_path = qa_self
+        if not config_path or not os.path.exists(config_path):
+            config_path = os.path.join(self.project_root, ".ai/config/review-rules.yaml")
+        self.config = load_yaml(config_path)
 
-        self._load_config(profile, bootstrap)
+        # Profile / Bootstrap
+        profiles_config = self.config.get("profiles", {})
+        default_profile = self.config.get("default_profile", "full")
+        self.active_profile = profile or default_profile
+        config_bootstrap = self.config.get("bootstrap_mode", False)
+        self.bootstrap = bootstrap or config_bootstrap
+        if self.bootstrap and not profile:
+            self.active_profile = "dev"
+        profile_def = profiles_config.get(self.active_profile, {})
+        self._profile_checkers_on = profile_def.get("checkers_on", [])
+        if self.active_profile == "dev" and not bootstrap:
+            self.bootstrap = True
 
+        # ── Layer A: 内置 checker ────────────────────────────────
+        self._checkers: List[Tuple[str, object, str]] = []
+        self._enabled: dict = {}
 
-        self._register_checkers()
+        def _add(cid: str, instance, label: str):
+            enabled = self.config.get(cid, {}).get("enabled", True)
+            self._checkers.append((cid, instance, label))
+            return enabled
+
+        for cid, cls, label, cfg_key in [
+            ("inplace_check",    InplaceChecker,      "pandas inplace=True",    "inplace_check"),
+            ("lookahead_check",  LookaheadChecker,    "前视偏差",                "lookahead_check"),
+            ("secret_check",     SecretChecker,       "硬编码密钥",              "secret_check"),
+            ("deadcode_check",   DeadCodeChecker,     "孤儿代码",                "deadcode_check"),
+            ("cyclic_check",     CyclicImportChecker, "循环导入",                "cyclic_check"),
+        ]:
+            cfg = self.config.get(cfg_key, {})
+            self._enabled[cid] = _add(cid, cls(cfg, self.project_root), label)
+
+        cb_cfg = self.config.get("code_ban_check", {})
+        self._enabled["code_ban"] = _add("code_ban", CodeBanChecker(cb_cfg, self.project_root), "代码禁用规则")
+
+        # 架构边界门禁
+        ib_cfg = self.config.get("import_boundary_check", {})
+        self._enabled["import_boundary"] = _add(
+            "import_boundary", ImportBoundaryChecker(ib_cfg, self.project_root), "架构边界门禁")
+
+        # QA 配置自审
+        ca_cfg = self.config.get("config_audit_check", {})
+        self._enabled["config_audit"] = _add("config_audit", ConfigAuditChecker(ca_cfg, self.project_root), "配置自审")
+
+        # 生产环境就绪
+        pr_cfg = self.config.get("production_check", {})
+        # 代码风格
+        cs_cfg = self.config.get("codestyle_check", {})
+        self._enabled["codestyle"] = _add("codestyle", CodeStyleChecker(cs_cfg, self.project_root), "代码风格")
+        # 大文件强制阻断（LARGE-01 BLOCKER / LARGE-02 WARN baseline）
+        lf_cfg = self.config.get("largefiles_check", {})
+        self._enabled["largefiles"] = _add("largefiles", LargeFilesChecker(lf_cfg, self.project_root), "大文件检测")
+        # 项目治理
+        gv_cfg = self.config.get("governance_check", {})
+        self._enabled["governance"] = _add("governance", GovernanceChecker(gv_cfg, self.project_root), "项目治理")
+        # 安全增强
+        sp_cfg = self.config.get("securityplus_check", {})
+        self._enabled["securityplus"] = _add("securityplus", SecurityPlusChecker(sp_cfg, self.project_root), "安全增强")
+        # 文档质量
+        dc_cfg = self.config.get("documentation_check", {})
+        self._enabled["documentation"] = _add("documentation", DocumentationChecker(dc_cfg, self.project_root), "文档质量")
+        # 零打印
+        zp_cfg = self.config.get("zeroprint_check", {})
+        self._enabled["zeroprint"] = _add("zeroprint", ZeroPrintChecker(zp_cfg, self.project_root), "零打印")
+        # 自定义规则
+        cr_cfg = self.config.get("customrules_check", {})
+        self._enabled["customrules"] = _add("customrules", CustomRulesChecker(cr_cfg, self.project_root), "自定义规则")
+        # 熔断检测
+        fd_cfg = self.config.get("fusedetect_check", {})
+        self._enabled["fusedetect"] = _add("fusedetect", FuseDetectorChecker(fd_cfg, self.project_root), "熔断检测")
+        # 文档一致性
+        ds_cfg = self.config.get("docconsistency_check", {})
+        self._enabled["docconsistency"] = _add("docconsistency", DocConsistencyChecker(ds_cfg, self.project_root), "文档一致性")
+
+        # 命名冲突检测 (STYLE-03b 跨域命名空间隔离 & 单一数据源)
+        nc_cfg = self.config.get("naming_conflict_check", {})
+        self._enabled["naming_conflict"] = _add("naming_conflict", NamingConflictChecker(nc_cfg, self.project_root), "命名冲突检测")
+
+        # SOLID 五原则静态门禁 (S/O/L/I/D AST 检查)
+        sd_cfg = self.config.get("solid_check", {})
+        self._enabled["solid"] = _add("solid", SolidChecker(sd_cfg, self.project_root), "SOLID 五原则")
+
+        # ── T29 盲区规则集（七类盲区 + 追加类）────────────────────
+        # ① 语义真实性：伪造计算 / 空壳假成功 / 静默降级
+        st_cfg = self.config.get("semantic_truth_check", {})
+        self._enabled["semantic_truth"] = _add(
+            "semantic_truth", SemanticTruthChecker(st_cfg, self.project_root), "语义真实性")
+        # 追加类：docstring 内可执行代码 / 未绑定名 / 改名手术完整性
+        dc_cfg = self.config.get("docstring_code_check", {})
+        self._enabled["docstring_code"] = _add(
+            "docstring_code", DocstringCodeChecker(dc_cfg, self.project_root), "docstring代码与绑定")
+        # ② 运行态与进程层：代码-进程漂移 / 端点无守护
+        rd_cfg = self.config.get("runtime_drift_check", {})
+        self._enabled["runtime_drift"] = _add(
+            "runtime_drift", RuntimeDriftChecker(rd_cfg, self.project_root), "运行态与进程层")
+        # ③ 版本控制治理：脱节 / 关键目录 0 入库
+        vc_cfg = self.config.get("vcs_governance_check", {})
+        self._enabled["vcs_governance"] = _add(
+            "vcs_governance", VcsGovernanceChecker(vc_cfg, self.project_root), "版本控制治理")
+        # ④⑤⑥+⑦ 克隆 / 声明 / 构建 / 路径
+        # T51 新增：容器平面（Docker 恢复后启用；不可用时自行 skipped）
+        cp_cfg = self.config.get("container_plane_check", {})
+        self._enabled["container_plane"] = _add(
+            "container_plane", ContainerPlaneChecker(cp_cfg, self.project_root), "容器平面")
+        bs_cfg = self.config.get("blindspot_check", {})
+        self._enabled["blindspot"] = _add(
+            "blindspot", BlindSpotChecker(bs_cfg, self.project_root), "克隆/声明/构建/路径")
+
+        self._enabled["production"] = _add("production", ProductionChecker(pr_cfg, self.project_root), "生产就绪")
+
+        # 质量门控
+        qg_cfg = self.config.get("quality_gates", {})
+        self._enabled["quality_gates"] = _add("quality_gates", QualityGateChecker(qg_cfg, self.project_root), "质量门控")
+
+        # CLAUDE.md 合规验证
+        cv_cfg = self.config.get("claude_validation", {})
+        self._enabled["claude_validation"] = _add("claude_validation", ClaudeValidator(cv_cfg, self.project_root), "CLAUDE 验证")
 
         # ── Layer B: 项目插件（文件路径加载） ────────────────────
         plugin_config = self.config.get("plugins", {})
@@ -249,7 +382,12 @@ class HealthScorer:
 
             # [M51-① 2026-09-14 by m-qa] quality_gates 的结果必须落进**同一个产物**。
             # 原实现只在上面 save_report(staged=True) 存过一次盘（那次在 quality_gates
-            # 补存盘：使磁盘报告与内存一致（否则 Gate5 恒 FAIL）。
+            # **运行之前**，为的是让它能读到报告），之后仅更新内存并 return ——
+            # 于是**磁盘上的报告永远不含 quality_gates**。
+            # 下游 qa_gate `missing = (CODE_CHECKERS|META_CHECKERS) - ran` 因此永不为空
+            # ⇒ **Gate5 恒 FAIL**，阻断恒真、判据失去分辨力（"恒红"是"恒绿"的镜像；
+            # 实测三份报告 legacy/run/fxproj 全部缺失 quality_gates）。
+            # 这里补一次存盘，使产物与内存一致。
             self.save_report(report, staged=True)
 
         return report
@@ -266,6 +404,64 @@ class HealthScorer:
     def _parse_issue_details(self, issues: List[str]) -> List[dict]:  # noqa: STYLE-06
         """从 issue 文本提取结构化信息，供 AI Agent 直接使用，无需猜测"""
         # 每条规则的完整定义（Agent 不用猜"因为什么"）
+        RULES = {
+            "STYLE-01": {
+                "severity": "WARN",
+                "title": "文件名应使用小写+下划线",
+                "expected": "文件名仅含小写字母、数字、下划线",
+                "standard": "PEP 8 — 包和模块命名",
+                "fix_hint": "重命名文件为小写+下划线格式",
+            },
+            "STYLE-02": {
+                "severity": "WARN",
+                "title": "行长度超限",
+                "expected": "每行 ≤ 120 字符",
+                "standard": "PEP 8 — 最大行长度",
+                "fix_hint": "拆分长行为多行，或提取变量缩短行",
+            },
+            "STYLE-03": {
+                "severity": "WARN",
+                "title": "命名违规",
+                "expected": "函数 snake_case, 类 PascalCase",
+                "standard": "PEP 8 — 命名约定",
+                "fix_hint": "按命名规范重命名",
+            },
+            "STYLE-04": {
+                "severity": "WARN",
+                "title": "日志格式错误",
+                "expected": "logging 使用 %% 格式化",
+                "standard": "框架手册 — 日志规范",
+                "fix_hint": "将 f-string 改为 %s 占位符格式",
+            },
+            "STYLE-05": {
+                "severity": "WARN",
+                "title": "文件行数超限",
+                "expected": "文件 ≤ 500 行",
+                "standard": "ISO 25010 — 可维护性 / Clean Code",
+                "fix_hint": "拆分为多个模块（如按功能/类拆分）",
+            },
+            "STYLE-06": {
+                "severity": "WARN",
+                "title": "函数行数超限",
+                "expected": "函数 ≤ 60 行",
+                "standard": "NASA Power of 10 — 规则 5",
+                "fix_hint": "将函数内的逻辑块抽成独立子函数",
+            },
+            "PY-06": {
+                "severity": "WARN",
+                "title": "缺少 src/ 或 Python 包",
+                "expected": "项目根目录应有 src/ 或根级 __init__.py",
+                "standard": "Python 工程规范",
+                "fix_hint": "创建 src/ 目录或添加 __init__.py",
+            },
+            "PY-07": {
+                "severity": "WARN",
+                "title": "缺少 tests/ 目录",
+                "expected": "项目应有 tests/ 目录",
+                "standard": "Python 工程规范",
+                "fix_hint": "创建 tests/ 目录并添加测试",
+            },
+        }
         details = []
         for issue in issues:
             detail = {
@@ -444,149 +640,3 @@ class HealthScorer:
                 "results": results,
             }],
         }
-
-
-    def _load_config(self, profile: str, bootstrap: bool):
-        """加载项目配置（0-污染模式优先）"""
-        # 0-污染模式：配置在 QA 系统中，不在项目里
-        # 优先查找 .ai/projects/{name}_local.yaml（0-污染模式标准命名）
-        # 其次查找 .ai/projects/{name}.yaml（向后兼容）
-        config_path = ""
-        if self.qa_system_root and self.project_name:
-            candidates = [
-                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}_local.yaml"),
-                os.path.join(self.qa_system_root, f".ai/projects/{self.project_name}.yaml"),
-            ]
-            for cp in candidates:
-                if os.path.exists(cp):
-                    config_path = cp
-                    break
-            if not config_path:
-                # fallback：QA-System 自身配置（仅用于 QA 系统自检场景）
-                qa_self = os.path.join(self.qa_system_root, ".ai/config/review-rules.yaml")
-                if os.path.exists(qa_self):
-                    config_path = qa_self
-        if not config_path or not os.path.exists(config_path):
-            config_path = os.path.join(self.project_root, ".ai/config/review-rules.yaml")
-        self.config = load_yaml(config_path)
-
-        # Profile / Bootstrap
-        profiles_config = self.config.get("profiles", {})
-        default_profile = self.config.get("default_profile", "full")
-        self.active_profile = profile or default_profile
-        config_bootstrap = self.config.get("bootstrap_mode", False)
-        self.bootstrap = bootstrap or config_bootstrap
-        if self.bootstrap and not profile:
-            self.active_profile = "dev"
-        profile_def = profiles_config.get(self.active_profile, {})
-        self._profile_checkers_on = profile_def.get("checkers_on", [])
-        if self.active_profile == "dev" and not bootstrap:
-            self.bootstrap = True
-
-
-    def _register_checkers(self):
-        """注册所有内置 checker"""
-        # ── Layer A: 内置 checker ────────────────────────────────
-        self._checkers: List[Tuple[str, object, str]] = []
-        self._enabled: dict = {}
-
-        def _add(cid: str, instance, label: str):
-            enabled = self.config.get(cid, {}).get("enabled", True)
-            self._checkers.append((cid, instance, label))
-            return enabled
-
-        for cid, cls, label, cfg_key in [
-            ("inplace_check",    InplaceChecker,      "pandas inplace=True",    "inplace_check"),
-            ("lookahead_check",  LookaheadChecker,    "前视偏差",                "lookahead_check"),
-            ("secret_check",     SecretChecker,       "硬编码密钥",              "secret_check"),
-            ("deadcode_check",   DeadCodeChecker,     "孤儿代码",                "deadcode_check"),
-            ("cyclic_check",     CyclicImportChecker, "循环导入",                "cyclic_check"),
-        ]:
-            cfg = self.config.get(cfg_key, {})
-            self._enabled[cid] = _add(cid, cls(cfg, self.project_root), label)
-
-        cb_cfg = self.config.get("code_ban_check", {})
-        self._enabled["code_ban"] = _add("code_ban", CodeBanChecker(cb_cfg, self.project_root), "代码禁用规则")
-
-        # 架构边界门禁
-        ib_cfg = self.config.get("import_boundary_check", {})
-        self._enabled["import_boundary"] = _add(
-            "import_boundary", ImportBoundaryChecker(ib_cfg, self.project_root), "架构边界门禁")
-
-        # QA 配置自审
-        ca_cfg = self.config.get("config_audit_check", {})
-        self._enabled["config_audit"] = _add("config_audit", ConfigAuditChecker(ca_cfg, self.project_root), "配置自审")
-
-        # 生产环境就绪
-        pr_cfg = self.config.get("production_check", {})
-        # 代码风格
-        cs_cfg = self.config.get("codestyle_check", {})
-        self._enabled["codestyle"] = _add("codestyle", CodeStyleChecker(cs_cfg, self.project_root), "代码风格")
-        # 大文件强制阻断（LARGE-01 BLOCKER / LARGE-02 WARN baseline）
-        lf_cfg = self.config.get("largefiles_check", {})
-        self._enabled["largefiles"] = _add("largefiles", LargeFilesChecker(lf_cfg, self.project_root), "大文件检测")
-        # 项目治理
-        gv_cfg = self.config.get("governance_check", {})
-        self._enabled["governance"] = _add("governance", GovernanceChecker(gv_cfg, self.project_root), "项目治理")
-        # 安全增强
-        sp_cfg = self.config.get("securityplus_check", {})
-        self._enabled["securityplus"] = _add("securityplus", SecurityPlusChecker(sp_cfg, self.project_root), "安全增强")
-        # 文档质量
-        dc_cfg = self.config.get("documentation_check", {})
-        self._enabled["documentation"] = _add("documentation", DocumentationChecker(dc_cfg, self.project_root), "文档质量")
-        # 零打印
-        zp_cfg = self.config.get("zeroprint_check", {})
-        self._enabled["zeroprint"] = _add("zeroprint", ZeroPrintChecker(zp_cfg, self.project_root), "零打印")
-        # 自定义规则
-        cr_cfg = self.config.get("customrules_check", {})
-        self._enabled["customrules"] = _add("customrules", CustomRulesChecker(cr_cfg, self.project_root), "自定义规则")
-        # 熔断检测
-        fd_cfg = self.config.get("fusedetect_check", {})
-        self._enabled["fusedetect"] = _add("fusedetect", FuseDetectorChecker(fd_cfg, self.project_root), "熔断检测")
-        # 文档一致性
-        ds_cfg = self.config.get("docconsistency_check", {})
-        self._enabled["docconsistency"] = _add("docconsistency", DocConsistencyChecker(ds_cfg, self.project_root), "文档一致性")
-
-        # 命名冲突检测 (STYLE-03b 跨域命名空间隔离 & 单一数据源)
-        nc_cfg = self.config.get("naming_conflict_check", {})
-        self._enabled["naming_conflict"] = _add("naming_conflict", NamingConflictChecker(nc_cfg, self.project_root), "命名冲突检测")
-
-        # SOLID 五原则静态门禁 (S/O/L/I/D AST 检查)
-        sd_cfg = self.config.get("solid_check", {})
-        self._enabled["solid"] = _add("solid", SolidChecker(sd_cfg, self.project_root), "SOLID 五原则")
-
-        # ── T29 盲区规则集（七类盲区 + 追加类）────────────────────
-        # ① 语义真实性：伪造计算 / 空壳假成功 / 静默降级
-        st_cfg = self.config.get("semantic_truth_check", {})
-        self._enabled["semantic_truth"] = _add(
-            "semantic_truth", SemanticTruthChecker(st_cfg, self.project_root), "语义真实性")
-        # 追加类：docstring 内可执行代码 / 未绑定名 / 改名手术完整性
-        dc_cfg = self.config.get("docstring_code_check", {})
-        self._enabled["docstring_code"] = _add(
-            "docstring_code", DocstringCodeChecker(dc_cfg, self.project_root), "docstring代码与绑定")
-        # ② 运行态与进程层：代码-进程漂移 / 端点无守护
-        rd_cfg = self.config.get("runtime_drift_check", {})
-        self._enabled["runtime_drift"] = _add(
-            "runtime_drift", RuntimeDriftChecker(rd_cfg, self.project_root), "运行态与进程层")
-        # ③ 版本控制治理：脱节 / 关键目录 0 入库
-        vc_cfg = self.config.get("vcs_governance_check", {})
-        self._enabled["vcs_governance"] = _add(
-            "vcs_governance", VcsGovernanceChecker(vc_cfg, self.project_root), "版本控制治理")
-        # ④⑤⑥+⑦ 克隆 / 声明 / 构建 / 路径
-        # T51 新增：容器平面（Docker 恢复后启用；不可用时自行 skipped）
-        cp_cfg = self.config.get("container_plane_check", {})
-        self._enabled["container_plane"] = _add(
-            "container_plane", ContainerPlaneChecker(cp_cfg, self.project_root), "容器平面")
-        bs_cfg = self.config.get("blindspot_check", {})
-        self._enabled["blindspot"] = _add(
-            "blindspot", BlindSpotChecker(bs_cfg, self.project_root), "克隆/声明/构建/路径")
-
-        self._enabled["production"] = _add("production", ProductionChecker(pr_cfg, self.project_root), "生产就绪")
-
-        # 质量门控
-        qg_cfg = self.config.get("quality_gates", {})
-        self._enabled["quality_gates"] = _add("quality_gates", QualityGateChecker(qg_cfg, self.project_root), "质量门控")
-
-        # CLAUDE.md 合规验证
-        cv_cfg = self.config.get("claude_validation", {})
-        self._enabled["claude_validation"] = _add("claude_validation", ClaudeValidator(cv_cfg, self.project_root), "CLAUDE 验证")
