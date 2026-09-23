@@ -136,6 +136,8 @@ profiles:
     - vcs_governance
     - blindspot
     - container_plane
+    - largefiles
+    - naming_conflict
   dev:
     description: 开发模式
     checkers_on:
