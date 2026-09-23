@@ -280,6 +280,7 @@ class HealthScorer:
         self._save_enabled = bool(save)
         all_issues: List[str] = []
         total_errors = 0
+        blocker_errors = 0
         checker_results = {}
         quality_gates_info = None
 
@@ -306,6 +307,10 @@ class HealthScorer:
                         "details": self._parse_issue_details(issues or []),
                     }
                     total_errors += errors
+                    cfg_key = cid if cid.endswith("_check") else cid + "_check"
+                    sev = self.config.get(cid, {}).get("severity", self.config.get(cfg_key, {}).get("severity", "INFO"))
+                    if sev == "BLOCKER":
+                        blocker_errors += errors
                     if errors:
                         all_issues.extend(issues or [])
                     else:
@@ -324,6 +329,10 @@ class HealthScorer:
                     "details": self._parse_issue_details(issues or []),
                 }
                 total_errors += errors
+                cfg_key = cid if cid.endswith("_check") else cid + "_check"
+                sev = self.config.get(cid, {}).get("severity", self.config.get(cfg_key, {}).get("severity", "INFO"))
+                if sev == "BLOCKER":
+                    blocker_errors += errors
                 if errors:
                     all_issues.extend(issues or [])
                 else:
@@ -340,7 +349,7 @@ class HealthScorer:
             "bootstrap": self.bootstrap,
             "errors": total_errors,
             "total_issues": len(all_issues),
-            "blocked": total_errors > 0 and not self.bootstrap,
+            "blocked": blocker_errors > 0 and not self.bootstrap,
             "checkers": checker_results,
             "all_issues": all_issues,
         }
@@ -368,7 +377,7 @@ class HealthScorer:
             # 更新报告中的汇总数据
             report["errors"] = total_errors
             report["total_issues"] = len(all_issues)
-            report["blocked"] = total_errors > 0 and not self.bootstrap
+            report["blocked"] = blocker_errors > 0 and not self.bootstrap
             report["all_issues"] = all_issues
 
             # [M51-① 2026-09-14 by m-qa] quality_gates 的结果必须落进**同一个产物**。

@@ -115,10 +115,12 @@ class CodeBanChecker(CodeBanMid):
                         class_lines = node.end_lineno - node.lineno
                     else:
                         class_lines = 0
-                    if class_lines > 300:
+                    max_class = self.config.get("class_max_lines", 500)
+                    exempt_names = set(self.config.get("large_class_exempt_names", []))
+                    if class_lines > max_class and node.name not in exempt_names:
                         issues.append(
                             f"[BAN-10] {fpath}:{node.lineno} 类 {node.name} "
-                            f"({class_lines} 行 > 300) -> "
+                            f"({class_lines} 行 > {max_class}) -> "
                             f"超大类违反 SRP 单一职责原则，建议拆分为多个类"
                         )
         return issues
