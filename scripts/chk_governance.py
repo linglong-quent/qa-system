@@ -176,3 +176,5 @@ class GovernanceChecker:
         if pkg_dirs_without_init > 0 and has_src:
             issues.append(f"[PY-09] {pkg_dirs_without_init} 个含 .py 的目录缺少 __init__.py")
             errors += 1
+
+        return errors
