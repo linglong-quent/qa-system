@@ -538,6 +538,6 @@ container_plane_check:
   enabled: true
   severity: BLOCKER
   max_restarts: 3
-  drift_grace_seconds: 300
+  drift_grace_seconds: 60
   watch_containers: {}
   required_services: []
