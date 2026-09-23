@@ -156,6 +156,9 @@ class ContainerPlaneChecker:
 
         for r in rows:
             name = r.get("Names", "")
+            # 只检查 linglong-* 项目容器，其他本地容器（dify/zeos/grafana）跳过
+            if not name.startswith("linglong-"):
+                continue
             status = r.get("Status", "")
             state = (r.get("State") or "").lower()
             d = insp.get(name, {})
