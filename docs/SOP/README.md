@@ -1,4 +1,3 @@
-﻿# SOP directory
-# Standard Operating Procedures
+﻿# SOP 目录
 
-## deploy.md
+Standard Operating Procedures 标准操作流程。

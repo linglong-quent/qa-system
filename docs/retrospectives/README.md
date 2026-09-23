@@ -1,2 +1,3 @@
-﻿# Retrospectives directory
-# 复盘记录
+﻿# 复盘记录目录
+
+项目复盘与经验教训归档。
