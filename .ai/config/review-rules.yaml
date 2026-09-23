@@ -496,6 +496,9 @@ semantic_truth_check:
   - D:/WB/TDX
   - D:/WB/NEWSFORGE
   - D:/WB/factor_forge
+  exclude_patterns:
+  - "**/open_source_systems/**"
+  - "**/.t18_*"
   random_block_min_fields: 3
 docstring_code_check:
   enabled: true

@@ -1,35 +1,35 @@
 import pathlib
-
-p = pathlib.Path("D:/WB/linglong/docker/docker-compose.yml")
+p = pathlib.Path(".ai/config/review-rules.yaml")
 t = p.read_text(encoding='utf-8')
 
-# 在 scheduler 的 logging 后面加 deploy.resources
-old = '''    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+# 排除 qlib 开源库
+old = '''semantic_truth_check:
+  enabled: true
+  severity: BLOCKER
+  scan_dirs:
+  - src/
+  - scripts/
+  - domain/
+  - D:/WB/TDX
+  - D:/WB/NEWSFORGE
+  - D:/WB/factor_forge'''
 
-  # ==================== 数据写入层 ===================='''
-
-new = '''    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 4G
-        reservations:
-          cpus: "0.5"
-          memory: 512M
-
-  # ==================== 数据写入层 ===================='''
+new = '''semantic_truth_check:
+  enabled: true
+  severity: BLOCKER
+  scan_dirs:
+  - src/
+  - scripts/
+  - domain/
+  - D:/WB/TDX
+  - D:/WB/NEWSFORGE
+  - D:/WB/factor_forge
+  exclude_patterns:
+  - "**/open_source_systems/**"
+  - "**/.t18_*"'''
 
 assert old in t, "old not found"
 t = t.replace(old, new)
 
 p.write_text(t, encoding='utf-8')
-print("added deploy.resources to scheduler")
+print("排除 qlib 开源库")
