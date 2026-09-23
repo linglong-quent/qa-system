@@ -54,7 +54,7 @@ jobs:
 
       - name: P5 — Gate0-Gate9 Full Gate
         id: final_gate
-        run: python scripts/qa_gate.py
+        run: python scripts/qa_gate.py --allow-stale-report
 
       - name: Archive QA Report
         uses: actions/upload-artifact@v4

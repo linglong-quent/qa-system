@@ -140,15 +140,21 @@ class SecurityPlusChecker:
         for fpath in self._collect_files():
             rel = os.path.relpath(fpath, self.project_root)
             try:
-                with open(fpath, "r", encoding="utf-8") as fh:
+                with open(fpath, "r", encoding="utf-8-sig", errors="replace") as fh:
                     content = fh.read()
             except Exception:
                 logger.warning("读取安全扫描文件失败: %s", fpath, exc_info=True)
+                issues.append(f"[PARSE-001] {rel}: 文件不可读；该文件未被安全扫描覆盖"
+                              f"（原行为：仅 warning 后静默跳过）")
                 continue
 
             try:
                 tree = ast.parse(content, filename=fpath)
-            except SyntaxError:
+            except SyntaxError as exc:
+                # M50：原为静默 `continue`（BOM 文件首行必抛 U+FEFF → 整个文件跳过
+                # 安全扫描）。改为上报，读取用 utf-8-sig 剥 BOM。
+                issues.append(f"[PARSE-001] {rel}: 解析失败 —— {exc.msg} (line {exc.lineno})；"
+                              f"该文件未被安全扫描覆盖（原行为：静默跳过）")
                 continue
 
             for lineno, desc in self._find_sqli_in_tree(tree, rel):

@@ -130,6 +130,12 @@ profiles:
     - customrules
     - fusedetect
     - docconsistency
+    - semantic_truth
+    - docstring_code
+    - runtime_drift
+    - vcs_governance
+    - blindspot
+    - container_plane
   dev:
     description: 开发模式
     checkers_on:
@@ -373,3 +379,61 @@ docconsistency_check:
   - docs/
 agent_boundary_exempt:
 - scripts/qa_gate.py
+
+# ── T29 盲区规则集（七类盲区 + docstring 追加类）──────────────
+# 每条规则均附"能失败"的注入证明，见 scripts/qa_rule_proof.py
+semantic_truth_check:
+  enabled: true
+  severity: BLOCKER
+  scan_dirs:
+  - src/
+  - scripts/
+  - domain/
+  random_block_min_fields: 3
+docstring_code_check:
+  enabled: true
+  severity: BLOCKER
+  scan_dirs:
+  - src/
+  - scripts/
+  - domain/
+  report_marker_only: true
+runtime_drift_check:
+  enabled: true
+  severity: WARN          # CI runner 无宿主进程，探测失败即静默跳过
+  scan_dirs:
+  - scripts/
+  - src/
+  - domain/
+  min_dependents: 3
+  probe_endpoints: true
+  endpoint_guardians: {}
+vcs_governance_check:
+  enabled: true
+  severity: WARN
+  max_dirty_ratio: 0.5
+  min_tracked: 50
+  critical_min_files: 5
+  critical_dirs: []
+blindspot_check:
+  enabled: true
+  severity: BLOCKER
+  scan_dirs:
+  - src/
+  - scripts/
+  - domain/
+  abs_path_min_hits: 3
+  dockerfiles:
+  - Dockerfile
+  clone_pairs: []
+  doc_claims: []
+  declared_paths: []
+  critical_paths: []
+
+container_plane_check:
+  enabled: true
+  severity: BLOCKER
+  max_restarts: 3
+  drift_grace_seconds: 60
+  watch_containers: {}
+  required_services: []

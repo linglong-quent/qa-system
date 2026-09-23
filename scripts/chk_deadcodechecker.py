@@ -23,6 +23,7 @@ class DeadCodeChecker:
     """Detect orphan public functions, classes, and constants."""
 
     def __init__(self, config: dict, project_root: str):
+        self.config = config
         self.project_root = project_root
         self.scan_dirs = config.get("scan_dirs", ["src/", "scripts/", "tests/"])
         # Symbols whose names match these patterns are exempt
@@ -46,15 +47,14 @@ class DeadCodeChecker:
     def _extract_public_symbols(self, tree: ast.AST) -> List[str]:
         symbols = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if not node.name.startswith("_"):
-                    symbols.append(node.name)
-            elif isinstance(node, ast.AsyncFunctionDef):
-                if not node.name.startswith("_"):
-                    symbols.append(node.name)
-            elif isinstance(node, ast.ClassDef):
-                if not node.name.startswith("_"):
-                    symbols.append(node.name)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name.startswith("_"):
+                    continue
+                # 带装饰器的符号 = 框架注册模式(路由/任务/事件处理器/定时器),
+                # 运行时按 URL/调度器注册表调用, AST 无 import 引用 → 非孤儿
+                if node.decorator_list:
+                    continue
+                symbols.append(node.name)
             elif isinstance(node, ast.Assign):
                 # Capture module-level public constants
                 for target in node.targets:
@@ -107,9 +107,10 @@ class DeadCodeChecker:
         issues: List[str] = []
         py_files = self._collect_py_files(self.scan_dirs)
 
-        # 引用收集范围 = 业务扫描目录 + scripts/ + tests/
+        # 引用收集范围 = 业务扫描目录 + ref_dirs (默认 scripts/ + tests/)
         # 业务公共符号可能仅被测试或运维脚本引用, 扫描范围过窄会产生大量误报
-        ref_dirs = list(dict.fromkeys(self.scan_dirs + ["scripts", "tests"]))
+        extra_ref_dirs = self.config.get("ref_dirs", ["scripts", "tests"])
+        ref_dirs = list(dict.fromkeys(self.scan_dirs + extra_ref_dirs))
         ref_files = self._collect_py_files(ref_dirs)
         all_used = self._extract_used_names(ref_files)
 

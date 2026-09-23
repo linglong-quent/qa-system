@@ -47,21 +47,21 @@
 
 ```
 用途：运行 QA 检查、维护规则表、管理 checker
-本地位置：E:\WB\QA-System
+本地位置：D:\WB\QA-System
 CI 触发：推 main 自动触发 6 步全阻断
 保护：main 需 QA Self-Test 通过 + PR review + 禁止 force push
 日常操作：
   - 改规则表 → 改 .ai/config/*.yaml → PR → CI 绿 → 合并
   - 改 checker → 改 scripts/chk_*.py → PR → CI 绿 → 合并
-  - 本地测试 → cd E:\WB\QA-System && python scripts/qa_self_test.py
-  - 检查 linglong → python scripts/qa_check.py health --project E:\linglong
+  - 本地测试 → cd D:\WB\QA-System && python scripts/qa_self_test.py
+  - 检查 linglong → python scripts/qa_check.py health --project D:\WB\linglong
 ```
 
 #### `linglong` — 策略代码仓库（0 污染）
 
 ```
 用途：纯策略代码 + 依赖配置
-本地位置：E:\linglong
+本地位置：D:\WB\linglong
 CI 触发：提 PR 时由 .github 工作流触发
 保护：main 需 lint + preflight-gate + test 通过 + 1 review
 原则：不放任何 QA 文件（qa_* / chk_* / .ai/ 均不允许）
@@ -308,7 +308,7 @@ GitHub 有两种规则系统，**规则在 Branch Protection 里，不在 Rulese
 
 ```bash
 # 从 qa-system 仓库运行
-cd E:\WB\QA-System
+cd D:\WB\QA-System
 
 # 全流程（检查 + 门禁）
 python scripts/qa.py local
@@ -332,8 +332,8 @@ run_qa.bat
 
 | 变量                    | 用途           | 示例                |
 | --------------------- | ------------ | ----------------- |
-| `QA_SYSTEM_ROOT=<路径>` | QA 系统根目录     | `E:\WB\QA-System` |
-| `QA_PROJECT=<路径>`     | 指定目标项目       | `E:\linglong`     |
+| `QA_SYSTEM_ROOT=<路径>` | QA 系统根目录     | `D:\WB\QA-System` |
+| `QA_PROJECT=<路径>`     | 指定目标项目       | `D:\WB\linglong`  |
 | `QA_ENV=production`   | 生产模式（门禁自动通过） |                   |
 | `QA_PROJECT_NAME=<名>` | 目标项目名        | `linglong_github` |
 
@@ -342,7 +342,7 @@ run_qa.bat
 **Windows 设置**：
 
 ```cmd
-setx QA_SYSTEM_ROOT "E:\WB\QA-System"
+setx QA_SYSTEM_ROOT "D:\WB\QA-System"
 ```
 
 **pre-commit 配置示例**：
@@ -404,7 +404,7 @@ python scripts/qa_setup.py --project /path/to/other --with-checkers
 
 echo "=== qa-system 自检 ==="
 # 本地自测
-cd E:\WB\QA-System && python scripts/qa_self_test.py | tail -3
+cd D:\WB\QA-System && python scripts/qa_self_test.py | tail -3
 
 # 本地门禁
 python scripts/qa_gate.py | tail -3
@@ -418,7 +418,7 @@ curl -s https://api.github.com/repos/linglong-quent/qa-system/branches/main/prot
 echo ""
 echo "=== linglong 0 污染检查 ==="
 # 检查是否有 QA 文件残留
-cd E:\linglong
+cd D:\WB\linglong
 python -c "
 import os
 qa_files = []

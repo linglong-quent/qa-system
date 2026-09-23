@@ -96,7 +96,9 @@ class ImportBoundaryChecker:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 tree = ast.parse(f.read())
-        except (SyntaxError, UnicodeDecodeError):
+        except (SyntaxError, UnicodeDecodeError) as e:
+            import logging
+            logging.getLogger(__name__).warning("importboundary parse fail: %s: %s", filepath, e)
             return 0
 
         rel_path = os.path.relpath(filepath, self.project_root)

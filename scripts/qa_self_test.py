@@ -89,11 +89,13 @@ def main():  # noqa: STYLE-06
         ".ai/config/ai-whitelist.yaml",
         ".ai/config/arch-review.yaml",
         ".ai/schemas/qa-report.schema.json",
+        ".ai/schemas/qa-gate-report.schema.json",
         ".pre-commit-config.yaml",
         ".github/workflows/ai-code-review.yml",
         ".github/workflows/ai-nightly-scan.yml",
-        "docs/ai-coding-compliance.md",
-        "docs/quality-gates.md",
+        # v1.1 修复 T03-R7：docs 已迁入编号目录，自检清单同步迁移后布局
+        "docs/01_核心文档/SPEC-ai-coding-compliance.md",
+        "docs/01_核心文档/SPEC-quality-gates.md",
     ]
     for f in core_files:
         check_file(os.path.join(base, f), f)
@@ -226,26 +228,34 @@ def main():  # noqa: STYLE-06
 
     config_path = os.path.join(base, ".ai/config/review-rules.yaml")
     if os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-
-        expected_checker_ids = {
-            "inplace_check", "lookahead_check", "secret_check",
-            "deadcode_check", "cyclic_check", "code_ban_check",
-            "import_boundary_check",
-        }
-        for cid in expected_checker_ids:
-            section = config.get(cid)
-            check(section is not None, f"config has '{cid}'",
-                  f"section not found in review-rules.yaml")
+        if not _HAS_YAML:
+            # 修复 T03-R19：缺 pyyaml 时此处原会 NameError 崩溃，改为显式失败
+            check(False, "config consistency (review-rules.yaml)",
+                  "pyyaml 未安装，无法解析配置")
+            config = None
+        else:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+        if config is None:
+            pass
+        else:
+            expected_checker_ids = {
+                "inplace_check", "lookahead_check", "secret_check",
+                "deadcode_check", "cyclic_check", "code_ban_check",
+                "import_boundary_check",
+            }
+            for cid in expected_checker_ids:
+                section = config.get(cid)
+                check(section is not None, f"config has '{cid}'",
+                      f"section not found in review-rules.yaml")
 
         # Verify plugin config
-        plugins_config = config.get("plugins")
-        check(plugins_config is not None, "config has 'plugins' section")
+            plugins_config = config.get("plugins")
+            check(plugins_config is not None, "config has 'plugins' section")
 
-        # Verify profiles match current checkers
-        profiles = config.get("profiles", {})
-        check(len(profiles) >= 2, "profiles >= 2 (full/dev/quick)")
+            # Verify profiles match current checkers
+            profiles = config.get("profiles", {})
+            check(len(profiles) >= 2, "profiles >= 2 (full/dev/quick)")
 
     print()
 
@@ -260,8 +270,10 @@ def main():  # noqa: STYLE-06
         _saved_env = {k: os.environ.pop(k) for k in
                       ("QA_SYSTEM_ROOT", "QA_PROJECT_NAME") if k in os.environ}
         try:
-            scorer = HealthScorer(base)
-            report = scorer.run_all()
+            # persist=False: 自检只探测，不产出 —— 禁止覆盖权威 qa-report.json
+            # （修复 T03-R2：门禁运行会把 22 checker/8 issues 的报告冲成 21/1）
+            scorer = HealthScorer(base, persist=False)
+            report = scorer.run_all(save=False)
         finally:
             os.environ.update(_saved_env)
         check("errors" in report, "HealthScorer.run_all() returns 'errors'")

@@ -59,10 +59,12 @@ class LookaheadChecker:
                 continue
 
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
+                with open(fpath, "r", encoding="utf-8-sig", errors="replace") as f:
                     content = f.read()
             except Exception:
                 logger.warning("读取回测文件失败: %s", rel, exc_info=True)
+                issues.append(f"[PARSE-001] {rel}: 文件不可读；该文件未被前视偏差检测覆盖"
+                              f"（原行为：仅 warning 后静默跳过）")
                 continue
 
             for pattern, desc in self.patterns:
@@ -77,7 +79,12 @@ class LookaheadChecker:
             # AST-level check: look for shift(-N) in function calls
             try:
                 tree = ast.parse(content, filename=fpath)
-            except SyntaxError:
+            except SyntaxError as exc:
+                # M50：原为静默 `continue`（BOM 文件首行必抛 U+FEFF → 整文件不可见）。
+                # 注意：上面的正则分支 (LOOKAHEAD-001) 仍会命中 BOM 文件，所以此处
+                # 静默只让 AST 分支失明 —— 门禁看起来"在工作"，实际少了一半判据。
+                issues.append(f"[PARSE-001] {rel}: 解析失败 —— {exc.msg} (line {exc.lineno})；"
+                              f"该文件未被 AST 分支 (LOOKAHEAD-002) 覆盖（原行为：静默跳过）")
                 continue
 
             for node in ast.walk(tree):

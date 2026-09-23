@@ -17,6 +17,10 @@ class DocumentationChecker:
         self.project_root = os.path.abspath(project_root)
         self.docs_dir = config.get("docs_dir", "docs/")
         self.require_schema = config.get("require_schema", False)
+        # 已知运行时生成物子目录(如复盘 HTML): 跳过 WORM 非标准格式判定
+        self.worm_exempt_subdirs = tuple(
+            s.rstrip("/\\") for s in config.get("worm_exempt_subdirs", [])
+        )
 
     def check(self) -> Tuple[int, List[str]]:
         issues = []
@@ -55,6 +59,9 @@ class DocumentationChecker:
         for root, dirs, files in os.walk(docs_path):
             for f in files:
                 if f.startswith("."):
+                    continue
+                rel_dir = os.path.relpath(root, docs_path)
+                if any(rel_dir == s or rel_dir.startswith(s + os.sep) for s in self.worm_exempt_subdirs):
                     continue
                 ext = os.path.splitext(f)[1].lower()
                 if ext not in (".md", ".txt", ".json", ".yaml", ".yml", ".svg", ".png", ".jpg"):

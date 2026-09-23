@@ -11,6 +11,6 @@ projects:
     config: qa-default.yaml
   linglong_local:
     name: 玲珑量化（本地开发版）
-    root: E:\WB\linglong
+    root: D:\WB\linglong
     type: quant-trading
     config: linglong_local.yaml
