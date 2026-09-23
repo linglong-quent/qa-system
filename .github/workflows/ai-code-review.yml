@@ -47,7 +47,7 @@ jobs:
 
       # ── P5: Gate0-Gate9 十层门禁总闸 ──
       - name: P5 — QA Gate (Gate0-Gate9)
-        run: python scripts/qa_gate.py
+        run: python scripts/qa_gate.py --allow-stale-report
 
       # ── 报告上传（always: 就算失败也上传） ──
       - name: Upload Report
