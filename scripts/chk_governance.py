@@ -114,6 +114,15 @@ class GovernanceChecker:
             issues.append(f"[GOV-02] 顶层目录文件过多 ({len(top_items)} 个)，建议移入子目录")
             errors += 1
 
+
+        errors += self._check_cleanup_and_encoding(issues)
+
+        return errors, issues
+
+
+    def _check_cleanup_and_encoding(self, issues: list) -> int:
+        """Sections 4-6: pycache + encoding + __init__"""
+        errors = 0
         # ── 4. __pycache__ 清理检查 ──
         pycache_count = 0
         for root, dirs, files in os.walk(self.project_root):
@@ -166,5 +175,3 @@ class GovernanceChecker:
         if pkg_dirs_without_init > 0 and has_src:
             issues.append(f"[PY-09] {pkg_dirs_without_init} 个含 .py 的目录缺少 __init__.py")
             errors += 1
-
-        return errors, issues

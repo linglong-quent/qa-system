@@ -1475,15 +1475,8 @@ def _print_gate_report(gate, args, report, exit_code):
     if gate.bypass.get("applied"):
         print(f"  ⚠️  BYPASS 生效: {gate.bypass.get('reason')}（已写入 JSON 契约）")
 
-    # ── 噪声分级摘要（T29 要求③：让真信号浮到前面）──
     _pre = build_contract(gate, args, report, exit_code)
-    _s = _pre["summary"]
-    print(f"\n  信号分级: 真信号 {_s['tasks_signal']} 条 / 噪声 {_s['tasks_advisory']} 条"
-          f"  → signal_ratio = {_s['signal_ratio']:.1%}")
-    if _s["tasks_signal"]:
-        from collections import Counter as _C
-        top = _C(t["checker"] for t in _pre["tasks"] if t["severity"] != "ADVISORY").most_common(5)
-        print(f"  真信号分布(前5): {top}")
+    _print_signal_summary(_pre)
 
     # ── 结构化契约输出（编排系统消费）──
     contract = _pre
@@ -1574,3 +1567,14 @@ def _print_gate_report(gate, args, report, exit_code):
 
 if __name__ == "__main__":
     main()
+
+
+def _print_signal_summary(pre: dict):
+    """打印信号分级摘要（T29）"""
+    s = pre["summary"]
+    print(f"\n  信号分级: 真信号 {s['tasks_signal']} 条 / 噪声 {s['tasks_advisory']} 条"
+          f"  → signal_ratio = {s['signal_ratio']:.1%}")
+    if s["tasks_signal"]:
+        from collections import Counter as _C
+        top = _C(t["checker"] for t in pre["tasks"] if t["severity"] != "ADVISORY").most_common(5)
+        print(f"  真信号分布(前5): {top}")
