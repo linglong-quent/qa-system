@@ -1358,7 +1358,8 @@ def _validate_contract(contract: dict) -> bool:
         return False
 
 
-def main():
+def _build_argparser():
+    """构建 CLI 参数解析器"""
     import argparse
     parser = argparse.ArgumentParser(description="QA 总闸门 v4.1 — Gate0-Gate9 十层门禁（编排契约）")
     parser.add_argument("--report", "-r", action="store_true", help="只报告不阻断（恒 exit 0）")
@@ -1384,6 +1385,11 @@ def main():
     parser.add_argument("--alert", action="store_true",
                         help="M51-(a)：把 DENY 结论告警到达人（走 M24 告警桥，不另建通道）。"
                              "QA_ENV=ci 时自动开启；--readonly 审计模式强制关闭（审计不得有外部副作用）")
+    return parser
+
+
+def main():
+    parser = _build_argparser()
     args = parser.parse_args()
 
     project_root = os.path.abspath(args.project or _PROJECT_ROOT)

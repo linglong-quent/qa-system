@@ -61,6 +61,8 @@ class SolidChecker:
         self.override_arg_tolerance = int(cfg.get("override_arg_tolerance"))
         self.dup_body_min_lines = int(cfg.get("dup_body_min_lines"))
         self.allowed_concrete = set(cfg.get("allowed_concrete", []))
+        self.exempt_class_names = set(cfg.get("exempt_class_names", []))
+        self.exempt_func_names = set(cfg.get("exempt_func_names", []))
         # 第一遍收集的类→方法签名映射 (供 L 检查)
         self._class_methods: Dict[str, Dict[str, int]] = {}
 

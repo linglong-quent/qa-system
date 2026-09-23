@@ -53,10 +53,7 @@ def check_file(path: str, label: str) -> bool:
     return ok
 
 
-def main():  # noqa: STYLE-06
-    global passed, failed
-    base = _PROJECT_ROOT
-    scripts_dir = _SCRIPTS_DIR
+def _test_file_and_ast(base: str, scripts_dir: str):
 
     print("=" * 60)
     print("  QA System Self-Test")
@@ -137,6 +134,13 @@ def main():  # noqa: STYLE-06
     print()
 
     # =============================================
+def main():  # noqa: STYLE-06
+    global passed, failed
+    base = _PROJECT_ROOT
+    scripts_dir = _SCRIPTS_DIR
+
+    _test_file_and_ast(base, scripts_dir)
+
     print("3. YAML syntax")
     print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
 
