@@ -127,6 +127,31 @@ def _newest_code_mtime(path: str, limit: int = 8000) -> float:
     return newest
 
 
+def _uptime_seconds(started_at: str):
+    """容器本次启动至今秒数；无法解析返回 None（按"已久"处理）。"""
+    if not started_at:
+        return None
+    import datetime as _dt
+    s = started_at.strip().replace("Z", "+00:00")
+    # Docker 给的纳秒精度（9 位小数）Python 只认 6 位
+    s = re.sub(r"(\.\d{6})\d+", r"\1", s)
+    try:
+        dt = _dt.datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_dt.timezone.utc)
+    return max(0.0, (_dt.datetime.now(_dt.timezone.utc) - dt).total_seconds())
+
+
+def _fmt_uptime(uptime) -> str:
+    if uptime is None:
+        return "（启动时间未知）"
+    if uptime < 3600:
+        return f"{uptime / 60:.0f} 分钟"
+    return f"{uptime / 3600:.1f} 小时"
+
+
 class ContainerPlaneChecker:
     """容器平面检查器"""
 
@@ -141,6 +166,9 @@ class ContainerPlaneChecker:
         self.required = self.config.get("required_services", []) or []
         self.mount_map = self.config.get("container_code_mounts", {}) or {}
         self.drift_grace_seconds = int(self.config.get("drift_grace_seconds", 60))
+        # 判定"仍在循环"的窗口：本次启动至今短于此值且累计重启超标 → 崩溃循环。
+        self.restart_loop_window_seconds = int(
+            self.config.get("restart_loop_window_seconds", 600))
 
     def check(self) -> Tuple[int, List[str]]:
         if not _docker_available():
@@ -171,11 +199,28 @@ class ContainerPlaneChecker:
             # 一次性初始化容器豁免（正常退出且未在重启）
             one_shot = (state == "exited" and exit_code == 0 and restarts == 0)
 
+            # 本次启动至今（秒）；StartedAt 缺失或解析失败按"已久"处理
+            started_at = st.get("StartedAt") or ""
+            uptime = _uptime_seconds(started_at)
+
             # ── CONT-001 崩溃循环 / 停摆 ──
-            if state == "restarting" or restarts > self.max_restarts:
+            # 崩溃循环 = **此刻仍在反复重启**，证据是 state=restarting，
+            # 或累计重启超标且本次启动至今很短。累计次数超标但已长期稳定运行的，
+            # 是"重启历史"（CONT-003），不叫崩溃循环。
+            looping = (state == "restarting") or (
+                restarts > self.max_restarts
+                and uptime is not None
+                and uptime < self.restart_loop_window_seconds)
+            if looping:
                 issues.append(
                     f"[CONT-001] 容器 '{name}' 处于崩溃循环：state={state} "
-                    f"restarts={restarts}（阈值 {self.max_restarts}）status={status}")
+                    f"restarts={restarts}（阈值 {self.max_restarts}）"
+                    f"本次已运行 {_fmt_uptime(uptime)} status={status}")
+            elif restarts > self.max_restarts:
+                issues.append(
+                    f"[CONT-003] 容器 '{name}' 累计重启 {restarts} 次（阈值 "
+                    f"{self.max_restarts}），本次已稳定运行 {_fmt_uptime(uptime)} "
+                    f"-> 非崩溃循环，但需查清历史重启根因（事故/依赖抖动/OOM）")
             elif state == "exited" and not one_shot:
                 issues.append(
                     f"[CONT-001] 容器 '{name}' 异常退出未恢复：exit_code={exit_code} "
@@ -213,11 +258,15 @@ class ContainerPlaneChecker:
                     newest_dt = datetime.fromtimestamp(newest, tz=timezone.utc)
                     delta = (newest_dt - started_utc).total_seconds()
                     if delta > self.drift_grace_seconds:
+                        # 展示用**本地时区**：Docker 的 StartedAt 是 UTC，直接打出来会
+                        # 与宿主文件 mtime（本地）差一个时区、甚至跨日，读者无法核对。
+                        _s_loc = started_utc.astimezone()
+                        _n_loc = newest_dt.astimezone()
                         issues.append(
                             f"[DRIFT-CONT-001] 容器 '{name}' 运行旧代码：启动于 "
-                            f"{started_utc.strftime('%Y-%m-%d %H:%M:%S')}，但宿主代码目录 {host_path} 内"
+                            f"{_s_loc.strftime('%Y-%m-%d %H:%M:%S')}（本地），但宿主代码目录 {host_path} 内"
                             f"最新 .py/.js/.sql/.sh 文件 mtime 为 "
-                            f"{newest_dt.strftime('%Y-%m-%d %H:%M:%S')}（晚 {delta / 3600:.1f} 小时）"
+                            f"{_n_loc.strftime('%Y-%m-%d %H:%M:%S')}（本地，晚 {delta / 3600:.1f} 小时）"
                             f" -> 宿主代码已改、容器未重建")
 
         # ── CONT-003 声明服务缺失 ──

@@ -107,13 +107,34 @@ def _in_spans(lineno: int, spans) -> bool:
     return any(a <= lineno <= b for a, b in spans)
 
 
-def _is_log_call(node) -> bool:
+def _local_log_wrappers(tree) -> set:
+    """本文件内"自己会打日志"的辅助函数名。
+
+    T51 只解决了"名字里有 log"的封装；项目里还有 `_report_exc(where, exc)`
+    这类**名字里没有 log** 的本地封装（内部调 logger.error 并做同类去重），
+    调用点看上去"没打日志" —— 实测 tick_anomaly_monitor 3 处被误判为静默降级。
+    判据应是"这个调用最终会不会落到日志"，而不是"名字像不像日志"。
+    """
+    names = set()
+    body = tree.body if isinstance(tree, ast.Module) else []
+    for node in body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call) and _is_log_call(sub):
+                names.add(node.name)
+                break
+    return names
+
+
+def _is_log_call(node, wrappers=frozenset()) -> bool:
     """是否是一次日志调用（**任意级别、任意封装**）。
 
     T51 精确率复核发现：首版只认 error/exception/critical/warning/warn，于是
     `logger.debug(...)`（`_stock_fund_feeder.py:155`、`_mixin_linkage_linkage.py:102`）
     与项目自有封装 `_log(...)`（`watchdog_scheduler.py:143`）都被误判为"无日志"。
     判定"是否静默"只需看有没有日志，不该评判日志级别。
+    `wrappers` 进一步覆盖名字里没有 log 的本地封装。
     """
     if not isinstance(node, ast.Call):
         return False
@@ -121,6 +142,8 @@ def _is_log_call(node) -> bool:
     name = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else "")
     if not name:
         return False
+    if name in wrappers:
+        return True
     if name.lower() in ("debug", "info", "warning", "warn", "error", "exception",
                         "critical", "log"):
         return True
@@ -131,6 +154,20 @@ def _is_log_call(node) -> bool:
 _BS = "\\"
 
 
+def _is_test_file(rel_path: str) -> bool:
+    """是否测试文件（pytest 管辖范围）。
+
+    测试的"使用"与"数据"都发生在运行时，静态 AST 规则对测试的判读天然失真：
+    pytest 按名字约定收集用例、测试替身故意空体、合成数据故意随机。
+    """
+    norm = rel_path.replace(_BS, "/")
+    base = norm.rsplit("/", 1)[-1]
+    return ("/tests/" in norm or norm.startswith("tests/")
+            or base == "conftest.py"
+            or (base.startswith("test_") and base.endswith(".py"))
+            or base.endswith("_test.py"))
+
+
 def _iter_py_files(root: str, scan_dirs: List[str], exclude_patterns=None):
     exts = (".py",)
     # T51: 归档/历史副本目录默认排除（`scripts/archive/old_versions_*` 等属历史快照，
@@ -138,6 +175,13 @@ def _iter_py_files(root: str, scan_dirs: List[str], exclude_patterns=None):
     skip = {".git", ".venv", ".deps", "node_modules", "__pycache__", "backups",
             "site-packages", "build", "dist", "_deprecated", "archive", "_archive",
             "old_versions", "scripts_backup", "backup", "_backup"}
+
+    def _is_junk_dir(name: str) -> bool:
+        # 精确集合漏掉了 `_fix_orch_backup` 这类"语义上是备份、名字不在表里"的目录
+        # （实测 linglong/var/_fix_orch_backup/ 下 3 个历史副本被当现役代码报）。
+        # 备份目录的判据是后缀语义，不是枚举。
+        return name in skip or name.endswith(("_backup", "_bak", "_old", "_archive"))
+
     # T52: 读取配置里的 exclude_patterns —— 此前该键被静默忽略，
     # 配置写了 `**/open_source_systems/**` 也不生效（用户实测报出）。
     # 把 glob 归一成路径片段做片段匹配。
@@ -155,7 +199,7 @@ def _iter_py_files(root: str, scan_dirs: List[str], exclude_patterns=None):
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [
                 d for d in dirnames
-                if d not in skip
+                if not _is_junk_dir(d)
                 and not any(f in os.path.join(dirpath, d).replace(_BS, "/")
                             for f in frags)
             ]
@@ -290,7 +334,15 @@ class SemanticTruthChecker:
             has_stub_comment = any(
                 l in stub_lines for l in range(node.lineno, (node.end_lineno or node.lineno) + 1))
             hollow = len(real) == 0
-            if hollow or has_stub_comment:
+            # T29 教训的一致化：本 checker 已认定 `def f(self): return "X"` 是
+            # 合法的常量返回、不是假成功；`return True` / `return 42` 同理 ——
+            # 单行常量返回本身不构成证据（实测 22/23 条属此类：can_stop_loss
+            # 是"止损永放行"铁律、is_available 是"本地实现始终可用"、
+            # 其余是测试替身）。
+            # 真正的"假成功"证据是**代码自己承认**没实现（TODO/占位/未实现/模拟…）。
+            if not has_stub_comment:
+                continue
+            if True:
                 why = "函数体为空" if hollow else "含占位标记"
                 out.append(
                     f"[TRUTH-002] {path}:{node.lineno} 空壳假成功：'{node.name}' {why} 却 "
@@ -307,6 +359,7 @@ class SemanticTruthChecker:
         """
         out = []
         spans = _coercion_ranges(tree)
+        wrappers = _local_log_wrappers(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ExceptHandler):
                 continue
@@ -317,7 +370,7 @@ class SemanticTruthChecker:
             for sub in ast.walk(node):
                 if isinstance(sub, ast.Raise):
                     has_log_or_raise = True
-                if _is_log_call(sub):
+                if _is_log_call(sub, wrappers):
                     has_log_or_raise = True
                 if isinstance(sub, ast.Return) and sub.value is not None:
                     v = sub.value
@@ -362,8 +415,15 @@ class SemanticTruthChecker:
                 parse_failed.append((rel, f"{exc.msg} (line {exc.lineno})"))
                 continue
             stub_lines = _comments_of(src)
-            issues.extend(self._truth001(rel, tree))
-            issues.extend(self._truth002(rel, tree, stub_lines))
+            # 测试文件跳过 TRUTH-001/002：
+            #   TRUTH-001「伪造计算」—— 测试用 np.random 造合成数据是**手段本身**；
+            #   TRUTH-002「空壳假成功」—— 测试替身/打桩函数故意空体返回哨兵。
+            # 对测试报这两类，等于把测试的正确写法判成缺陷（实测 15 条）。
+            # TRUTH-003（静默降级）仍对测试生效：吞异常在测试里同样是缺陷。
+            in_test = _is_test_file(rel)
+            if not in_test:
+                issues.extend(self._truth001(rel, tree))
+                issues.extend(self._truth002(rel, tree, stub_lines))
             issues.extend(self._truth003(rel, tree))
             issues.extend(self._idsem001(rel, tree))
         for rel, why in unreadable[:PARSE_REPORT_CAP]:

@@ -18,6 +18,13 @@ import os
 import re
 from typing import List, Set, Tuple
 
+# pytest 的 xunit 风格生命周期钩子：由 pytest 按名字约定调用，静态 import 分析
+# 原理上观测不到其"使用"，因此不参与 DEADCODE-001 判定。
+_PYTEST_LIFECYCLE_HOOKS = frozenset({
+    "setup_module", "teardown_module", "setup_function", "teardown_function",
+    "setup_class", "teardown_class", "setup_method", "teardown_method",
+})
+
 
 class DeadCodeChecker:
     """Detect orphan public functions, classes, and constants."""
@@ -91,7 +98,32 @@ class DeadCodeChecker:
                     files.append(fp_)
         return files
 
-    def _extract_public_symbols(self, tree: ast.AST) -> List[str]:
+    @staticmethod
+    def _is_test_file(fpath: str) -> bool:
+        """是否为测试文件（pytest 管辖范围）。"""
+        norm = fpath.replace("\\", "/")
+        base = norm.rsplit("/", 1)[-1]
+        return ("/tests/" in norm or norm.startswith("tests/")
+                or base == "conftest.py"
+                or (base.startswith("test_") and base.endswith(".py"))
+                or base.endswith("_test.py"))
+
+    @staticmethod
+    def _is_pytest_dynamic(name: str) -> bool:
+        """名字是否由 pytest 按约定动态发现（而非 import 引用）。
+
+        这些符号的"使用"发生在 pytest 收集阶段（按名字约定扫描 + 属性查找），
+        静态 import 分析原理上无法观测，故不属于 DEADCODE-001 判定范围：
+          - 用例函数 test_*
+          - 用例类   Test*
+          - 钩子     pytest_*（pytest_configure / pytest_collection_modifyitems ...）
+          - 生命周期 setup_module / teardown_function / setup_class ...（xunit 风格）
+        """
+        if name.startswith(("test_", "Test", "pytest_")):
+            return True
+        return name in _PYTEST_LIFECYCLE_HOOKS
+
+    def _extract_public_symbols(self, tree: ast.AST, fpath: str = "") -> List[str]:
         """模块顶层的公共 API 面：函数 / 类 / 常量。
 
         只看 ``tree.body``（模块顶层），不再 ast.walk 整棵树 —— 原实现会把
@@ -100,7 +132,14 @@ class DeadCodeChecker:
 
         类方法"未被引用"是弱信号（可能是接口实现 / 插件钩子 / 动态调用），
         不属于 DEADCODE-001 的判定范围。
+
+        测试文件额外跳过 pytest 动态发现的命名：linglong 的 tests/ 下实测
+        1063 条报点中有 1049 条属此类（占 99%），留下它们只会淹没真信号。
+        conftest.py 由 pytest 自动加载，顶层符号全是插件/夹具入口，整体跳过。
         """
+        in_test = bool(fpath) and self._is_test_file(fpath)
+        conftest = (bool(fpath)
+                    and fpath.replace("\\", "/").rsplit("/", 1)[-1] == "conftest.py")
         symbols = []
         for node in getattr(tree, "body", []):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -109,6 +148,10 @@ class DeadCodeChecker:
                 # 带装饰器的符号 = 框架注册模式(路由/任务/事件处理器/定时器),
                 # 运行时按 URL/调度器注册表调用, AST 无 import 引用 → 非孤儿
                 if node.decorator_list:
+                    continue
+                if conftest:
+                    continue
+                if in_test and self._is_pytest_dynamic(node.name):
                     continue
                 symbols.append(node.name)
             elif isinstance(node, ast.Assign):
@@ -266,7 +309,7 @@ class DeadCodeChecker:
             except (SyntaxError, UnicodeDecodeError):
                 continue
 
-            symbols = self._extract_public_symbols(tree)
+            symbols = self._extract_public_symbols(tree, fpath)
             for sym in symbols:
                 if sym in self.exempt_names:
                     continue

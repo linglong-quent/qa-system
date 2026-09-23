@@ -464,6 +464,13 @@ naming_conflict_check:
   severity: BLOCKER
   max_issues: 100
   skip_dirs:
+  # .tmp_scripts/ 是 git 忽略的临时脚本工作区（.gitignore:23，0 文件被追踪）。
+  # 门禁扫它会让结果**随暂存文件漂移**：随便两个临时脚本各定义一个同名桩类，
+  # 就报"同名类冲突"（实测 .tmp_scripts/_verify_auth2.py 与 _verify_auth3.py
+  # 各定义了一个 fastapi 桩 HTTPException，产生 1 条 BLOCKER）。
+  # 门禁治理的对象是**仓库内容**，不含暂存区 —— 这不是放宽判据，
+  # 而是把判据匹配到它真正要治理的产物边界。
+  - .tmp_scripts
   - __pycache__
   - .git
   - .ai
