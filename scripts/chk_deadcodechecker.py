@@ -54,19 +54,55 @@ class DeadCodeChecker:
         ])
 
     def _collect_py_files(self, dirs: List[str]) -> List[str]:
+        """收集 .py 文件。
+
+        排除规则（接多仓后必需，否则 .venv/node_modules 会被全量扫入）：
+        - 硬编码 skip 目录名
+        - 配置的 exclude_patterns（glob 归一为路径片段）
+        """
+        skip = {".git", ".venv", ".deps", "node_modules", "__pycache__", "backups",
+                "site-packages", "build", "dist", "_deprecated", "archive", "_archive",
+                "old_versions", "scripts_backup", "backup", "_backup"}
+        frags = []
+        for pat in (self.config.get("exclude_patterns", []) or []):
+            p = str(pat).replace("\\", "/").strip().strip("*").strip("/")
+            p = p.replace("**", "").strip("/")
+            if p:
+                frags.append(p)
+
         files = []
         for d in dirs:
             full = os.path.join(self.project_root, d)
-            if os.path.isdir(full):
-                for root, _dirs, fnames in os.walk(full):
-                    for fn in fnames:
-                        if fn.endswith(".py"):
-                            files.append(os.path.join(root, fn))
+            if not os.path.isdir(full):
+                continue
+            for root, subdirs, fnames in os.walk(full):
+                subdirs[:] = [
+                    s for s in subdirs
+                    if s not in skip
+                    and not any(f in os.path.join(root, s).replace("\\", "/")
+                                for f in frags)
+                ]
+                for fn in fnames:
+                    if not fn.endswith(".py"):
+                        continue
+                    fp_ = os.path.join(root, fn)
+                    if any(f in fp_.replace("\\", "/") for f in frags):
+                        continue
+                    files.append(fp_)
         return files
 
     def _extract_public_symbols(self, tree: ast.AST) -> List[str]:
+        """模块顶层的公共 API 面：函数 / 类 / 常量。
+
+        只看 ``tree.body``（模块顶层），不再 ast.walk 整棵树 —— 原实现会把
+        类方法（``def trade_value(self)``）和函数体内的局部赋值都当"公共符号"，
+        对 linglong 实测产生 5462 条噪声（占全部报点 96%）。
+
+        类方法"未被引用"是弱信号（可能是接口实现 / 插件钩子 / 动态调用），
+        不属于 DEADCODE-001 的判定范围。
+        """
         symbols = []
-        for node in ast.walk(tree):
+        for node in getattr(tree, "body", []):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 if node.name.startswith("_"):
                     continue
@@ -76,7 +112,7 @@ class DeadCodeChecker:
                     continue
                 symbols.append(node.name)
             elif isinstance(node, ast.Assign):
-                # Capture module-level public constants
+                # 仅模块顶层常量
                 for target in node.targets:
                     if isinstance(target, ast.Name) and not target.id.startswith("_"):
                         symbols.append(target.id)
@@ -158,7 +194,12 @@ class DeadCodeChecker:
             # DEADCODE-003 孤岛模块：无任何文件 import 其模块路径，且非入口脚本
             if base in ("__init__.py",) or base in self.entry_points:
                 continue
-            if not any(rel.startswith(d) for d in self.library_dirs):
+            abs_norm = fpath.replace("\\", "/")
+            in_lib = any(
+                rel.startswith(d) or ("/" + d.strip("/") + "/") in abs_norm
+                for d in self.library_dirs
+            )
+            if not in_lib:
                 continue          # 脚本目录：直接执行，不适用"孤岛模块"判定
             mod = rel[:-3].replace("/", ".")
             if mod.endswith(".__init__"):

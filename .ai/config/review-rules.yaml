@@ -194,6 +194,28 @@ deadcode_check:
   - domain/
   - shared/
   - pipeline/
+  - D:/WB/linglong
+  - D:/WB/TDX
+  - D:/WB/NEWSFORGE
+  - D:/WB/factor_forge
+  ref_dirs:
+  - scripts/
+  - src/
+  - tests/
+  - D:/WB/linglong
+  - D:/WB/TDX
+  - D:/WB/NEWSFORGE
+  - D:/WB/factor_forge
+  exclude_patterns:
+  - "**/open_source_systems/**"
+  - "**/.venv/**"
+  - "**/node_modules/**"
+  - "**/.deps/**"
+  - "**/vendor/**"
+  - "**/__pycache__/**"
+  - "**/archive/**"
+  - "**/_recovery_backup/**"
+  - "**/.t18_*"
   # DEADCODE-003 只对库目录生效：scripts/ 下是 CLI/调度器直接执行的脚本，
   # 本就不该被 import，对其报"孤岛模块"是噪声
   library_dirs:

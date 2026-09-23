@@ -127,22 +127,45 @@ def _is_log_call(node) -> bool:
     return bool(re.match(r"^_?log(ger)?$|_log$|^log_", name, re.I))
 
 
-def _iter_py_files(root: str, scan_dirs: List[str]):
+# 反斜杠（Windows 路径分隔符）—— 提取为常量，避免裸数字触发 BAN-5 魔法数字
+_BS = "\\"
+
+
+def _iter_py_files(root: str, scan_dirs: List[str], exclude_patterns=None):
     exts = (".py",)
     # T51: 归档/历史副本目录默认排除（`scripts/archive/old_versions_*` 等属历史快照，
     # 对其报缺陷只制造噪声 —— 精确率复核样本 8 即此类）
     skip = {".git", ".venv", ".deps", "node_modules", "__pycache__", "backups",
             "site-packages", "build", "dist", "_deprecated", "archive", "_archive",
             "old_versions", "scripts_backup", "backup", "_backup"}
-    targets = [os.path.join(root, d.rstrip("/\\")) for d in scan_dirs] or [root]
+    # T52: 读取配置里的 exclude_patterns —— 此前该键被静默忽略，
+    # 配置写了 `**/open_source_systems/**` 也不生效（用户实测报出）。
+    # 把 glob 归一成路径片段做片段匹配。
+    frags = []
+    for pat in (exclude_patterns or []):
+        p = str(pat).replace(_BS, "/").strip()
+        p = p.strip("*").strip("/")
+        p = p.replace("**", "").strip("/")
+        if p:
+            frags.append(p)
+    targets = [os.path.join(root, d.rstrip("/" + _BS)) for d in scan_dirs] or [root]
     for base in targets:
         if not os.path.isdir(base):
             continue
         for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = [d for d in dirnames if d not in skip]
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in skip
+                and not any(f in os.path.join(dirpath, d).replace(_BS, "/")
+                            for f in frags)
+            ]
             for fn in filenames:
-                if fn.endswith(exts):
-                    yield os.path.join(dirpath, fn)
+                if not fn.endswith(exts):
+                    continue
+                full = os.path.join(dirpath, fn)
+                if any(f in full.replace(_BS, "/") for f in frags):
+                    continue
+                yield full
 
 
 def _read(path: str) -> Tuple[str, bool, str]:
@@ -199,6 +222,7 @@ class SemanticTruthChecker:
         self.config = config or {}
         self.project_root = os.path.abspath(project_root)
         self.scan_dirs = self.config.get("scan_dirs", ["src/", "scripts/", "domain/"])
+        self.exclude_patterns = self.config.get("exclude_patterns", [])
         self.random_fields = int(self.config.get("random_block_min_fields", 3))
 
     # ── TRUTH-001 ─────────────────────────────────────────────
@@ -321,7 +345,8 @@ class SemanticTruthChecker:
         parse_failed: List[Tuple[str, str]] = []
         unreadable: List[Tuple[str, str]] = []
         bom_files: List[str] = []
-        for path in _iter_py_files(self.project_root, self.scan_dirs):
+        for path in _iter_py_files(self.project_root, self.scan_dirs,
+                                   self.exclude_patterns):
             src, has_bom, err = _read(path)
             rel = os.path.relpath(path, self.project_root)
             if has_bom:
