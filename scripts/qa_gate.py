@@ -1450,127 +1450,127 @@ def main():
     _print_gate_report(gate, args, report, exit_code)
 def _print_gate_report(gate, args, report, exit_code):
     """格式化门禁报告输出（人读）"""
-        # 格式化输出（人读）
-        print("=" * 60)
-        print("  QA Gate v4.1 — Gate0-Gate9 十层门禁")
-        print("=" * 60)
+    # 格式化输出（人读）
+    print("=" * 60)
+    print("  QA Gate v4.1 — Gate0-Gate9 十层门禁")
+    print("=" * 60)
 
-        for c in gate.results:
-            if c["passed"]:
-                icon = "✅ PASS"
-            elif c.get("severity") == "BLOCKER":
-                icon = "❌ FAIL"
-            else:
-                icon = "⚠️  FAIL"
-            d = f" — {c['detail']}" if c.get("detail") else ""
-            print(f"  {icon}  {c['name']}{d}")
-
-        total = len(gate.results)
-        passed_count = sum(1 for c in gate.results if c["passed"])
-        print(f"\n  {passed_count}/{total} 门禁通过")
-        if args.report:
-            print("  Verdict: (report-only, exit 0)")
+    for c in gate.results:
+        if c["passed"]:
+            icon = "✅ PASS"
+        elif c.get("severity") == "BLOCKER":
+            icon = "❌ FAIL"
         else:
-            print(f"  Verdict: {({'0': '✅ ALLOW', '1': '🚫 DENY', '2': '⚠️  ERROR'})[str(exit_code)]}")
-        if gate.bypass.get("applied"):
-            print(f"  ⚠️  BYPASS 生效: {gate.bypass.get('reason')}（已写入 JSON 契约）")
+            icon = "⚠️  FAIL"
+        d = f" — {c['detail']}" if c.get("detail") else ""
+        print(f"  {icon}  {c['name']}{d}")
 
-        # ── 噪声分级摘要（T29 要求③：让真信号浮到前面）──
-        _pre = build_contract(gate, args, report, exit_code)
-        _s = _pre["summary"]
-        print(f"\n  信号分级: 真信号 {_s['tasks_signal']} 条 / 噪声 {_s['tasks_advisory']} 条"
-              f"  → signal_ratio = {_s['signal_ratio']:.1%}")
-        if _s["tasks_signal"]:
-            from collections import Counter as _C
-            top = _C(t["checker"] for t in _pre["tasks"] if t["severity"] != "ADVISORY").most_common(5)
-            print(f"  真信号分布(前5): {top}")
+    total = len(gate.results)
+    passed_count = sum(1 for c in gate.results if c["passed"])
+    print(f"\n  {passed_count}/{total} 门禁通过")
+    if args.report:
+        print("  Verdict: (report-only, exit 0)")
+    else:
+        print(f"  Verdict: {({'0': '✅ ALLOW', '1': '🚫 DENY', '2': '⚠️  ERROR'})[str(exit_code)]}")
+    if gate.bypass.get("applied"):
+        print(f"  ⚠️  BYPASS 生效: {gate.bypass.get('reason')}（已写入 JSON 契约）")
 
-        # ── 结构化契约输出（编排系统消费）──
-        contract = _pre
-        json_path = args.json
-        if args.run_id and not json_path:
-            json_path = os.path.join(gate.run_dir, "gate-report.json")
+    # ── 噪声分级摘要（T29 要求③：让真信号浮到前面）──
+    _pre = build_contract(gate, args, report, exit_code)
+    _s = _pre["summary"]
+    print(f"\n  信号分级: 真信号 {_s['tasks_signal']} 条 / 噪声 {_s['tasks_advisory']} 条"
+          f"  → signal_ratio = {_s['signal_ratio']:.1%}")
+    if _s["tasks_signal"]:
+        from collections import Counter as _C
+        top = _C(t["checker"] for t in _pre["tasks"] if t["severity"] != "ADVISORY").most_common(5)
+        print(f"  真信号分布(前5): {top}")
 
-        # M51-(a)：门禁产出的消费者 —— DENY 必须能到达人（复用 M24 通道，不另建）。
-        # 放在写盘之前，使 alerts 结果成为契约的一部分（可审计"到底送出去没有"）。
-        contract["alerts"] = {"enabled": bool(gate.alert_enabled), "attempted": False,
-                              "delivered": False, "suppressed": True,
-                              "http_code": 0, "bridge": "", "detail": "未尝试",
-                              "driver": ("--alert" if args.alert else
-                                         ("QA_ENV=ci" if os.environ.get("QA_ENV", "").lower() == "ci" else
-                                          ("readonly" if args.readonly else "disabled")))}
-        _verdict = contract.get("verdict")
-        _pending_path = ""
-        if gate.alert_enabled and _verdict in ("DENY", "ERROR"):
-            if json_path:
-                contract["_contract_path"] = os.path.abspath(json_path)
-            try:
-                from qa_alert import notify
-                res = notify(contract)
-                contract["alerts"] = res
-                contract["alerts"]["driver"] = ("--alert" if args.alert else "QA_ENV=ci")
-                if res.get("delivered"):
-                    print(f"\n  📣 已告警到达人（M24 通道 {res.get('bridge')}，HTTP {res.get('http_code')}）")
-                else:
-                    # 不静默：没送到就明说，且让退出码无法把它当成功
-                    print(f"\n  ❌ 告警未送达：{res.get('detail')}")
-                    gate.errors.append(f"告警未送达: {res.get('detail')}")
-                    if exit_code == 0:
-                        exit_code = 2
-            except Exception as e:
-                contract["alerts"]["detail"] = f"告警模块异常: {e}"
-                print(f"\n  ❌ 告警投递异常: {e}")
-                gate.errors.append(f"告警投递异常: {e}")
+    # ── 结构化契约输出（编排系统消费）──
+    contract = _pre
+    json_path = args.json
+    if args.run_id and not json_path:
+        json_path = os.path.join(gate.run_dir, "gate-report.json")
+
+    # M51-(a)：门禁产出的消费者 —— DENY 必须能到达人（复用 M24 通道，不另建）。
+    # 放在写盘之前，使 alerts 结果成为契约的一部分（可审计"到底送出去没有"）。
+    contract["alerts"] = {"enabled": bool(gate.alert_enabled), "attempted": False,
+                          "delivered": False, "suppressed": True,
+                          "http_code": 0, "bridge": "", "detail": "未尝试",
+                          "driver": ("--alert" if args.alert else
+                                     ("QA_ENV=ci" if os.environ.get("QA_ENV", "").lower() == "ci" else
+                                      ("readonly" if args.readonly else "disabled")))}
+    _verdict = contract.get("verdict")
+    _pending_path = ""
+    if gate.alert_enabled and _verdict in ("DENY", "ERROR"):
+        if json_path:
+            contract["_contract_path"] = os.path.abspath(json_path)
+        try:
+            from qa_alert import notify
+            res = notify(contract)
+            contract["alerts"] = res
+            contract["alerts"]["driver"] = ("--alert" if args.alert else "QA_ENV=ci")
+            if res.get("delivered"):
+                print(f"\n  📣 已告警到达人（M24 通道 {res.get('bridge')}，HTTP {res.get('http_code')}）")
+            else:
+                # 不静默：没送到就明说，且让退出码无法把它当成功
+                print(f"\n  ❌ 告警未送达：{res.get('detail')}")
+                gate.errors.append(f"告警未送达: {res.get('detail')}")
                 if exit_code == 0:
                     exit_code = 2
-        elif _verdict in ("DENY", "ERROR"):
-            # 未开启投递：DENY 也**不得静默消失**。落一条待投递台账（可被独立驱动补投），
-            # 并在契约里写明未投递的原因 —— 这样"结论没到达任何人"是可查的事实，而非空白。
-            contract["alerts"]["detail"] = ("投递未开启（driver=%s）：DENY 已记入待投递台账，"
-                                            "未到达人" % contract["alerts"]["driver"])
-            try:
-                _pending_dir = gate.run_dir or os.path.join(gate.qa_system_root or gate.root, ".ai", "runs")
-                os.makedirs(_pending_dir, exist_ok=True)
-                _pending_path = os.path.join(_pending_dir, "pending-alerts.jsonl")
-                with open(_pending_path, "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({
-                        "ts": contract.get("generated_at"),
-                        "verdict": _verdict, "exit_code": exit_code,
-                        "project": (contract.get("project") or {}).get("name"),
-                        "run_id": contract.get("run_id"),
-                        "summary": contract.get("summary"),
-                        "gate_report": os.path.abspath(json_path) if json_path else "",
-                        "driver": contract["alerts"]["driver"],
-                    }, ensure_ascii=False) + "\n")
-                contract["alerts"]["pending_ledger"] = _pending_path
-                print(f"\n  ⚠️  {_verdict} 未告警到达人（driver={contract['alerts']['driver']}）"
-                      f" —— 已记入待投递台账 {_pending_path}")
-            except Exception as e:
-                contract["alerts"]["detail"] += f"；且写待投递台账失败: {e}"
-                print(f"\n  ⚠️  写待投递台账失败: {e}")
-        else:
-            contract["alerts"]["detail"] = f"verdict={_verdict} 未达告警门槛"
+        except Exception as e:
+            contract["alerts"]["detail"] = f"告警模块异常: {e}"
+            print(f"\n  ❌ 告警投递异常: {e}")
+            gate.errors.append(f"告警投递异常: {e}")
+            if exit_code == 0:
+                exit_code = 2
+    elif _verdict in ("DENY", "ERROR"):
+        # 未开启投递：DENY 也**不得静默消失**。落一条待投递台账（可被独立驱动补投），
+        # 并在契约里写明未投递的原因 —— 这样"结论没到达任何人"是可查的事实，而非空白。
+        contract["alerts"]["detail"] = ("投递未开启（driver=%s）：DENY 已记入待投递台账，"
+                                        "未到达人" % contract["alerts"]["driver"])
+        try:
+            _pending_dir = gate.run_dir or os.path.join(gate.qa_system_root or gate.root, ".ai", "runs")
+            os.makedirs(_pending_dir, exist_ok=True)
+            _pending_path = os.path.join(_pending_dir, "pending-alerts.jsonl")
+            with open(_pending_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps({
+                    "ts": contract.get("generated_at"),
+                    "verdict": _verdict, "exit_code": exit_code,
+                    "project": (contract.get("project") or {}).get("name"),
+                    "run_id": contract.get("run_id"),
+                    "summary": contract.get("summary"),
+                    "gate_report": os.path.abspath(json_path) if json_path else "",
+                    "driver": contract["alerts"]["driver"],
+                }, ensure_ascii=False) + "\n")
+            contract["alerts"]["pending_ledger"] = _pending_path
+            print(f"\n  ⚠️  {_verdict} 未告警到达人（driver={contract['alerts']['driver']}）"
+                  f" —— 已记入待投递台账 {_pending_path}")
+        except Exception as e:
+            contract["alerts"]["detail"] += f"；且写待投递台账失败: {e}"
+            print(f"\n  ⚠️  写待投递台账失败: {e}")
+    else:
+        contract["alerts"]["detail"] = f"verdict={_verdict} 未达告警门槛"
 
-        if json_path:
-            json_path = os.path.abspath(json_path)
-            os.makedirs(os.path.dirname(json_path) or ".", exist_ok=True)
-            contract["artifacts"]["gate_report"] = json_path
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(contract, f, ensure_ascii=False, indent=2)
-            print(f"\n  JSON contract: {json_path}")
-            _validate_contract(contract)
-        if args.run_id:
-            from qa_run import write_run_meta
-            run_meta = write_run_meta(gate.run_dir, run_id=args.run_id, command="qa_gate",
-                                      project_root=project_root,
-                                      gate=args.gate or "all",
-                                      verdict=contract["verdict"], exit_code=exit_code,
-                                      artifacts=contract["artifacts"])
-            if run_meta:
-                print(f"  run meta:      {run_meta}")
+    if json_path:
+        json_path = os.path.abspath(json_path)
+        os.makedirs(os.path.dirname(json_path) or ".", exist_ok=True)
+        contract["artifacts"]["gate_report"] = json_path
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(contract, f, ensure_ascii=False, indent=2)
+        print(f"\n  JSON contract: {json_path}")
+        _validate_contract(contract)
+    if args.run_id:
+        from qa_run import write_run_meta
+        run_meta = write_run_meta(gate.run_dir, run_id=args.run_id, command="qa_gate",
+                                  project_root=project_root,
+                                  gate=args.gate or "all",
+                                  verdict=contract["verdict"], exit_code=exit_code,
+                                  artifacts=contract["artifacts"])
+        if run_meta:
+            print(f"  run meta:      {run_meta}")
 
-        sys.exit(exit_code)
+    sys.exit(exit_code)
 
 
-    if __name__ == "__main__":
-        main()
+if __name__ == "__main__":
+    main()

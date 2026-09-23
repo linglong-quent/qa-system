@@ -282,214 +282,214 @@ def main():  # noqa: STYLE-06
     _test_runtime_and_gate(base, scripts_dir)
 def _test_yaml_and_contracts(base: str, scripts_dir: str):
     """Sections 3-6: YAML + Interface + Schema + Config"""
-        print("3. YAML syntax")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+    print("3. YAML syntax")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
 
-        if not _HAS_YAML:
-            print("  [SKIP] 未安装 pyyaml，跳过 YAML 语法检查")
-        else:
-            yaml_dirs = [
-                os.path.join(base, ".ai/config"),
-                os.path.join(base, ".github/workflows"),
-            ]
-            for d in yaml_dirs:
-                if not os.path.isdir(d):
-                    continue
-                for f in sorted(os.listdir(d)):
-                    if not (f.endswith(".yaml") or f.endswith(".yml")):
-                        continue
-                    path = os.path.join(d, f)
-                    try:
-                        with open(path, "r", encoding="utf-8") as fh:
-                            yaml.safe_load(fh)
-                        check(True, os.path.relpath(path, base))
-                    except yaml.YAMLError as e:
-                        check(False, os.path.relpath(path, base), str(e))
-
-            # pre-commit config
-            try:
-                with open(os.path.join(base, ".pre-commit-config.yaml"), "r", encoding="utf-8") as f:
-                    yaml.safe_load(f)
-                check(True, ".pre-commit-config.yaml")
-            except yaml.YAMLError as e:
-                check(False, ".pre-commit-config.yaml", str(e))
-
-        print()
-
-        # =============================================
-        print("4. Interface contract (all checkers)")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
-
-        checker_modules = [
-            ("chk_inplacechecker",    "InplaceChecker"),
-            ("chk_lookaheadchecker",  "LookaheadChecker"),
-            ("chk_secretchecker",     "SecretChecker"),
-            ("chk_deadcodechecker",   "DeadCodeChecker"),
-            ("chk_cyclicchecker",     "CyclicImportChecker"),
-            ("chk_codebanchecker",    "CodeBanChecker"),
-            ("chk_importboundary",    "ImportBoundaryChecker"),
-            ("chk_solid",             "SolidChecker"),
+    if not _HAS_YAML:
+        print("  [SKIP] 未安装 pyyaml，跳过 YAML 语法检查")
+    else:
+        yaml_dirs = [
+            os.path.join(base, ".ai/config"),
+            os.path.join(base, ".github/workflows"),
         ]
-        for mod_name, cls_name in checker_modules:
-            try:
-                mod = importlib.import_module(mod_name)
-                cls = getattr(mod, cls_name)
-                instance = cls({}, base)
-                result = instance.check()
-                ok = (
-                    isinstance(result, tuple)
-                    and len(result) == 2
-                    and isinstance(result[0], int)
-                    and isinstance(result[1], list)
-                )
-                check(ok, f"{mod_name}.{cls_name}.check()", "must return (int, list)")
-            except Exception:
-                logger.warning("接口契约检查失败: %s.%s", mod_name, cls_name, exc_info=True)
-                check(False, f"{mod_name}.{cls_name}", "异常，请查看日志")
+        for d in yaml_dirs:
+            if not os.path.isdir(d):
+                continue
+            for f in sorted(os.listdir(d)):
+                if not (f.endswith(".yaml") or f.endswith(".yml")):
+                    continue
+                path = os.path.join(d, f)
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        yaml.safe_load(fh)
+                    check(True, os.path.relpath(path, base))
+                except yaml.YAMLError as e:
+                    check(False, os.path.relpath(path, base), str(e))
 
-        print()
+        # pre-commit config
+        try:
+            with open(os.path.join(base, ".pre-commit-config.yaml"), "r", encoding="utf-8") as f:
+                yaml.safe_load(f)
+            check(True, ".pre-commit-config.yaml")
+        except yaml.YAMLError as e:
+            check(False, ".pre-commit-config.yaml", str(e))
 
-        # =============================================
-        print("5. Schema validation")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+    print()
 
-        schema_path = os.path.join(base, ".ai/schemas/qa-report.schema.json")
-        if os.path.exists(schema_path):
-            try:
-                with open(schema_path, "r", encoding="utf-8") as f:
-                    schema = json.load(f)
-                check("properties" in schema, "qa-report.schema.json", "missing properties")
-                check("required" in schema, "qa-report.schema.json", "missing required")
-            except json.JSONDecodeError as e:
-                check(False, "qa-report.schema.json", str(e))
+    # =============================================
+    print("4. Interface contract (all checkers)")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+
+    checker_modules = [
+        ("chk_inplacechecker",    "InplaceChecker"),
+        ("chk_lookaheadchecker",  "LookaheadChecker"),
+        ("chk_secretchecker",     "SecretChecker"),
+        ("chk_deadcodechecker",   "DeadCodeChecker"),
+        ("chk_cyclicchecker",     "CyclicImportChecker"),
+        ("chk_codebanchecker",    "CodeBanChecker"),
+        ("chk_importboundary",    "ImportBoundaryChecker"),
+        ("chk_solid",             "SolidChecker"),
+    ]
+    for mod_name, cls_name in checker_modules:
+        try:
+            mod = importlib.import_module(mod_name)
+            cls = getattr(mod, cls_name)
+            instance = cls({}, base)
+            result = instance.check()
+            ok = (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[0], int)
+                and isinstance(result[1], list)
+            )
+            check(ok, f"{mod_name}.{cls_name}.check()", "must return (int, list)")
+        except Exception:
+            logger.warning("接口契约检查失败: %s.%s", mod_name, cls_name, exc_info=True)
+            check(False, f"{mod_name}.{cls_name}", "异常，请查看日志")
+
+    print()
+
+    # =============================================
+    print("5. Schema validation")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+
+    schema_path = os.path.join(base, ".ai/schemas/qa-report.schema.json")
+    if os.path.exists(schema_path):
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                schema = json.load(f)
+            check("properties" in schema, "qa-report.schema.json", "missing properties")
+            check("required" in schema, "qa-report.schema.json", "missing required")
+        except json.JSONDecodeError as e:
+            check(False, "qa-report.schema.json", str(e))
+    else:
+        check(False, "qa-report.schema.json", "file not found")
+
+    print()
+
+    # =============================================
+    print("6. Config consistency")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+
+    config_path = os.path.join(base, ".ai/config/review-rules.yaml")
+    if os.path.exists(config_path):
+        if not _HAS_YAML:
+            # 修复 T03-R19：缺 pyyaml 时此处原会 NameError 崩溃，改为显式失败
+            check(False, "config consistency (review-rules.yaml)",
+                  "pyyaml 未安装，无法解析配置")
+            config = None
         else:
-            check(False, "qa-report.schema.json", "file not found")
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+        if config is None:
+            pass
+        else:
+            expected_checker_ids = {
+                "inplace_check", "lookahead_check", "secret_check",
+                "deadcode_check", "cyclic_check", "code_ban_check",
+                "import_boundary_check",
+            }
+            for cid in expected_checker_ids:
+                section = config.get(cid)
+                check(section is not None, f"config has '{cid}'",
+                      f"section not found in review-rules.yaml")
 
-        print()
+        # Verify plugin config
+            plugins_config = config.get("plugins")
+            check(plugins_config is not None, "config has 'plugins' section")
 
-        # =============================================
-        print("6. Config consistency")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+            # Verify profiles match current checkers
+            profiles = config.get("profiles", {})
+            check(len(profiles) >= 2, "profiles >= 2 (full/dev/quick)")
 
-        config_path = os.path.join(base, ".ai/config/review-rules.yaml")
-        if os.path.exists(config_path):
-            if not _HAS_YAML:
-                # 修复 T03-R19：缺 pyyaml 时此处原会 NameError 崩溃，改为显式失败
-                check(False, "config consistency (review-rules.yaml)",
-                      "pyyaml 未安装，无法解析配置")
-                config = None
-            else:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = yaml.safe_load(f)
-            if config is None:
-                pass
-            else:
-                expected_checker_ids = {
-                    "inplace_check", "lookahead_check", "secret_check",
-                    "deadcode_check", "cyclic_check", "code_ban_check",
-                    "import_boundary_check",
-                }
-                for cid in expected_checker_ids:
-                    section = config.get(cid)
-                    check(section is not None, f"config has '{cid}'",
-                          f"section not found in review-rules.yaml")
+    print()
 
-            # Verify plugin config
-                plugins_config = config.get("plugins")
-                check(plugins_config is not None, "config has 'plugins' section")
-
-                # Verify profiles match current checkers
-                profiles = config.get("profiles", {})
-                check(len(profiles) >= 2, "profiles >= 2 (full/dev/quick)")
-
-        print()
-
-        # =============================================
+    # =============================================
 
 def _test_runtime_and_gate(base: str, scripts_dir: str):
     """Sections 7-9: Runtime smoke + Entry point + Gate e2e"""
-        print("7. Runtime smoke test")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+    print("7. Runtime smoke test")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
 
+    try:
+        sys.path.insert(0, scripts_dir)
+        from chk_healthscorer import HealthScorer
+        # 自检 QA-System 自身: 屏蔽 0-污染环境变量, 避免误扫项目或污染项目 QA 报告
+        _saved_env = {k: os.environ.pop(k) for k in
+                      ("QA_SYSTEM_ROOT", "QA_PROJECT_NAME") if k in os.environ}
         try:
-            sys.path.insert(0, scripts_dir)
-            from chk_healthscorer import HealthScorer
-            # 自检 QA-System 自身: 屏蔽 0-污染环境变量, 避免误扫项目或污染项目 QA 报告
-            _saved_env = {k: os.environ.pop(k) for k in
-                          ("QA_SYSTEM_ROOT", "QA_PROJECT_NAME") if k in os.environ}
-            try:
-                # persist=False: 自检只探测，不产出 —— 禁止覆盖权威 qa-report.json
-                # （修复 T03-R2：门禁运行会把 22 checker/8 issues 的报告冲成 21/1）
-                scorer = HealthScorer(base, persist=False)
-                report = scorer.run_all(save=False)
-            finally:
-                os.environ.update(_saved_env)
-            check("errors" in report, "HealthScorer.run_all() returns 'errors'")
-            check("checkers" in report, "HealthScorer.run_all() returns 'checkers'")
-            check(report["errors"] >= 0, f"errors >= 0 (got {report['errors']})")
+            # persist=False: 自检只探测，不产出 —— 禁止覆盖权威 qa-report.json
+            # （修复 T03-R2：门禁运行会把 22 checker/8 issues 的报告冲成 21/1）
+            scorer = HealthScorer(base, persist=False)
+            report = scorer.run_all(save=False)
+        finally:
+            os.environ.update(_saved_env)
+        check("errors" in report, "HealthScorer.run_all() returns 'errors'")
+        check("checkers" in report, "HealthScorer.run_all() returns 'checkers'")
+        check(report["errors"] >= 0, f"errors >= 0 (got {report['errors']})")
 
-            # Verify at least built-in checkers present
-            core_ids = {"inplace_check", "lookahead_check", "secret_check",
-                         "deadcode_check", "cyclic_check", "code_ban",
-                         "import_boundary"}
-            present = set(report["checkers"].keys())
-            missing = core_ids - present
-            check(len(missing) == 0, f"All built-in checkers present",
-                  f"missing: {missing}")
+        # Verify at least built-in checkers present
+        core_ids = {"inplace_check", "lookahead_check", "secret_check",
+                     "deadcode_check", "cyclic_check", "code_ban",
+                     "import_boundary"}
+        present = set(report["checkers"].keys())
+        missing = core_ids - present
+        check(len(missing) == 0, f"All built-in checkers present",
+              f"missing: {missing}")
 
-        except Exception:
-            logger.warning("运行时烟雾测试失败", exc_info=True)
-            check(False, f"Runtime smoke test failed", "异常，请查看日志")
+    except Exception:
+        logger.warning("运行时烟雾测试失败", exc_info=True)
+        check(False, f"Runtime smoke test failed", "异常，请查看日志")
 
-        print()
+    print()
 
-        # =============================================
-        print("8. Entry point test")
-        print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
+    # =============================================
+    print("8. Entry point test")
+    print("  鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€")
 
-        try:
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, os.path.join(scripts_dir, "qa_check.py"), "list"],
-                capture_output=True, cwd=base, timeout=10,
-            )
-            stdout = result.stdout.decode("utf-8", errors="replace")
-            check(result.returncode == 0, "scripts/qa_check.py list 鈥?exit=0")
-            check("import_boundary" in stdout, "list shows import_boundary")
-        except Exception:
-            logger.warning("入口点测试失败: qa_check.py list", exc_info=True)
-            check(False, "scripts/qa_check.py list", "异常，请查看日志")
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, os.path.join(scripts_dir, "qa_check.py"), "list"],
+            capture_output=True, cwd=base, timeout=10,
+        )
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        check(result.returncode == 0, "scripts/qa_check.py list 鈥?exit=0")
+        check("import_boundary" in stdout, "list shows import_boundary")
+    except Exception:
+        logger.warning("入口点测试失败: qa_check.py list", exc_info=True)
+        check(False, "scripts/qa_check.py list", "异常，请查看日志")
 
-        print()
+    print()
 
-        # =============================================
-        print("=" * 60)
-        print(f"  Result: {passed} passed, {failed} failed")
-        if failed > 0:
-            print(f"  鈿狅笍  {failed} check(s) failed 鈥?review above")
-        else:
-            print("  鉁?All checks passed")
-        print("=" * 60)
+    # =============================================
+    print("=" * 60)
+    print(f"  Result: {passed} passed, {failed} failed")
+    if failed > 0:
+        print(f"  鈿狅笍  {failed} check(s) failed 鈥?review above")
+    else:
+        print("  鉁?All checks passed")
+    print("=" * 60)
 
-        return 1 if failed > 0 else 0
+    return 1 if failed > 0 else 0
 
 
-    if __name__ == "__main__":
-        sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())
 
-        print("9. Gate end-to-end")
-        print("  ----------------------------")
-        try:
-            import subprocess
-            r = subprocess.run([sys.executable, os.path.join(scripts_dir, "qa_gate.py"), "--report"],
-                              capture_output=True, timeout=30, cwd=base)
-            passed_test = r.returncode == 0
-            # Even if gate denies, it should exit with code 1, not crash
-            stdout = r.stdout.decode("utf-8", errors="replace")
-            check("PASS" in stdout, "qa_gate.py produces output")
-            check("VERDICT" in stdout or "Verdict" in stdout, "qa_gate produces verdict")
-        except Exception:
-            logger.warning("qa_gate 端到端测试失败", exc_info=True)
-            check(False, "qa_gate end-to-end", "异常，请查看日志")
+    print("9. Gate end-to-end")
+    print("  ----------------------------")
+    try:
+        import subprocess
+        r = subprocess.run([sys.executable, os.path.join(scripts_dir, "qa_gate.py"), "--report"],
+                          capture_output=True, timeout=30, cwd=base)
+        passed_test = r.returncode == 0
+        # Even if gate denies, it should exit with code 1, not crash
+        stdout = r.stdout.decode("utf-8", errors="replace")
+        check("PASS" in stdout, "qa_gate.py produces output")
+        check("VERDICT" in stdout or "Verdict" in stdout, "qa_gate produces verdict")
+    except Exception:
+        logger.warning("qa_gate 端到端测试失败", exc_info=True)
+        check(False, "qa_gate end-to-end", "异常，请查看日志")
 
-        print()
+    print()
