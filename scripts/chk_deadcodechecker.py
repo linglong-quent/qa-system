@@ -32,6 +32,26 @@ class DeadCodeChecker:
             "app", "application", "router", "run",
         ])
         self.entry_points = config.get("entry_points", ["main.py", "app.py", "cli.py"])
+        # DEADCODE-002：临时/调试/备份残留（文件名或所在目录名命中即报）
+        self.junk_patterns = config.get("junk_patterns", [
+            # 词边界（_ / 数字 / 结尾）—— 避免 `_templates`(temp+lates)、
+            # `_testing` 之类被误伤
+            r"^_(probe|dbg|debug|tmp|temp|scratch|bak|old|copy)(_|$|\d)",
+            r"^_(check|verify|audit|fix|patch|retro|test)(_|$|\d)",
+            r"^_\w+_backup(_|$|\d)",
+            r"^\w+_old\d*$", r"^\w+_bak\d*$", r"^\w+_copy\d*$",
+            r"^untitled\d*$", r"^new_?file\d*$",
+            r"^tmp_\w+", r"^temp_\w+",
+        ])
+        # DEADCODE-003 只对库目录生效：scripts/ tools/ ci/ ops/ 下的文件由 CLI/调度器
+        # 直接执行，本就不该被 import，对其报"孤岛模块"是纯噪声（实测 1036 条）。
+        self.library_dirs = config.get("library_dirs", [
+            "src/", "domain/", "shared/", "core/", "app/", "lib/",
+        ])
+        self.junk_dirs = config.get("junk_dirs", [
+            "_recovery_backup", "_backup", "backups", "_bak", "_old",
+            "_deprecated", "_tmp", ".tmp", "_scratch", "_trash", "_to_delete",
+        ])
 
     def _collect_py_files(self, dirs: List[str]) -> List[str]:
         files = []
@@ -81,8 +101,16 @@ class DeadCodeChecker:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        used.add(alias.name.split(".")[0])
+                        used.add(alias.name)
+                        for seg in alias.name.split("."):
+                            used.add(seg)
                 elif isinstance(node, ast.ImportFrom):
+                    # 模块路径本身也是引用：`from a.b.c import X` 必须把
+                    # `a.b.c` 计入，否则 a/b/c.py 会被误判为孤岛模块。
+                    if node.module:
+                        used.add(node.module)
+                        for seg in node.module.split("."):
+                            used.add(seg)
                     for alias in node.names:
                         used.add(alias.asname or alias.name)
                 elif isinstance(node, ast.Name):
@@ -102,6 +130,50 @@ class DeadCodeChecker:
                     if _DOTTED.match(node.value):
                         used.add(node.value.rsplit(".", 1)[-1])
         return used
+
+    def _file_level(self, py_files: List[str], all_used: Set[str]) -> List[str]:
+        """文件级死代码/问题代码判定（原 checker 完全缺失这一层）。"""
+        out: List[str] = []
+        junk_re = [re.compile(p, re.I) for p in self.junk_patterns]
+        for fpath in py_files:
+            rel = os.path.relpath(fpath, self.project_root).replace("\\", "/")
+            parts = rel.split("/")
+            base = parts[-1]
+            stem = base[:-3] if base.endswith(".py") else base
+
+            # DEADCODE-002 临时/调试/备份残留
+            hit_dir = next((d for d in parts[:-1] if d in self.junk_dirs), None)
+            hit_name = next((p.pattern for p in junk_re if p.match(stem)), None)
+            if hit_dir:
+                out.append(
+                    f"[DEADCODE-002] {rel} 位于残留目录 '{hit_dir}/' "
+                    f"-> 临时/备份代码不应留在受版本控制的源码树，请删除或移出")
+                continue
+            if hit_name:
+                out.append(
+                    f"[DEADCODE-002] {rel} 文件名疑似临时/调试/备份残留 "
+                    f"(匹配 {hit_name}) -> 确认无用后应删除，勿留在生产源码树")
+                continue
+
+            # DEADCODE-003 孤岛模块：无任何文件 import 其模块路径，且非入口脚本
+            if base in ("__init__.py",) or base in self.entry_points:
+                continue
+            if not any(rel.startswith(d) for d in self.library_dirs):
+                continue          # 脚本目录：直接执行，不适用"孤岛模块"判定
+            mod = rel[:-3].replace("/", ".")
+            if mod.endswith(".__init__"):
+                mod = mod[: -len(".__init__")]
+            short = mod.rsplit(".", 1)[-1]
+            imported = any(
+                u == mod or u == short or mod.endswith("." + u)
+                for u in all_used if isinstance(u, str)
+            )
+            # 目录级 __init__ 导出 / 字符串动态引用也视为被引用
+            if not imported and short not in all_used:
+                out.append(
+                    f"[DEADCODE-003] {rel} 孤岛模块：无任何文件 import '{mod}' "
+                    f"-> 未被引用的模块是死代码，确认无用后应删除或归档")
+        return out
 
     def check(self) -> Tuple[int, List[str]]:
         issues: List[str] = []
@@ -133,6 +205,9 @@ class DeadCodeChecker:
                             entry_point_imports.add(alias.asname or alias.name)
 
         all_used |= entry_point_imports
+
+        # ── DEADCODE-002/003：文件级判定 ──────────────────────
+        issues.extend(self._file_level(py_files, all_used))
 
         # Check each file for orphan public symbols
         for fpath in py_files:

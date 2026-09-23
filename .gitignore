@@ -18,3 +18,7 @@ linglong_local/
 # OS
 .DS_Store
 Thumbs.db
+
+# 临时脚本工作区（不入库）
+.tmp_scripts/
+

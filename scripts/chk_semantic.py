@@ -60,13 +60,47 @@ def _coercion_ranges(tree) -> list:
     T51 精确率复核样本 5：`_stock_fund_feeder.py:93-101` 的 `_f(val)` docstring 明写
     "安全转 float (None/空 → 0)"，`except (TypeError,ValueError): return 0.0` 是**契约**
     而非静默失效。对这类适配器报"静默降级"是噪声。
+
+    T52 扩充（二进制解析原语）：判据从"函数名像转换器"升级为"函数体就是一个
+    try 包裹 struct.unpack / int.from_bytes" —— 这类函数按 offset 读取定长字节，
+    畸形数据返回中性值是**契约**（见 `_cache_reader_utils.py` 的 `_read_uint32_le`），
+    且处于逐字节热路径，加日志会刷屏。用结构判定而非名字判定，
+    避免把 `read_cache()` 这类真会静默失效的读函数误免。
     """
     spans = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
-                COERCION_FUNC.match(node.name or ""):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if COERCION_FUNC.match(node.name or "") or _is_binary_primitive(node):
             spans.append((node.lineno, node.end_lineno or node.lineno))
     return spans
+
+
+BINARY_DECODERS = {"unpack", "iter_unpack", "from_bytes", "unpack_from"}
+
+
+def _is_binary_primitive(node) -> bool:
+    """函数体是否 = 单个 try 包裹的 struct.unpack / int.from_bytes 定长解码。"""
+    body = [s for s in node.body
+            if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+    if len(body) != 1 or not isinstance(body[0], ast.Try):
+        return False
+    tri = body[0]
+    if len(tri.body) != 1 or not isinstance(tri.body[0], ast.Return):
+        return False
+    val = tri.body[0].value
+    if val is None:
+        return False
+    for sub in ast.walk(val):
+        if isinstance(sub, ast.Attribute) and sub.attr in BINARY_DECODERS:
+            return True
+        if isinstance(sub, ast.Call):
+            f = sub.func
+            fname = f.attr if isinstance(f, ast.Attribute) else (
+                f.id if isinstance(f, ast.Name) else "")
+            if fname in BINARY_DECODERS:
+                return True
+    return False
 
 
 def _in_spans(lineno: int, spans) -> bool:

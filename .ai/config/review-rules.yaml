@@ -190,7 +190,20 @@ deadcode_check:
   enabled: true
   scan_dirs:
   - scripts/
-  severity: INFO
+  - src/
+  - domain/
+  - shared/
+  - pipeline/
+  # DEADCODE-003 只对库目录生效：scripts/ 下是 CLI/调度器直接执行的脚本，
+  # 本就不该被 import，对其报"孤岛模块"是噪声
+  library_dirs:
+  - src/
+  - domain/
+  - shared/
+  - core/
+  - app/
+  - lib/
+  severity: BLOCKER
 cyclic_check:
   enabled: true
   scan_dirs:
@@ -496,9 +509,17 @@ semantic_truth_check:
   - D:/WB/TDX
   - D:/WB/NEWSFORGE
   - D:/WB/factor_forge
+  - D:/WB/linglong
   exclude_patterns:
   - "**/open_source_systems/**"
   - "**/.t18_*"
+  - "**/.venv/**"
+  - "**/node_modules/**"
+  - "**/.deps/**"
+  - "**/vendor/**"
+  - "**/__pycache__/**"
+  - "**/archive/**"
+  - "**/_recovery_backup/**"
   random_block_min_fields: 3
 docstring_code_check:
   enabled: true
