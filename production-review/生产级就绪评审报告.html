@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玲珑量化 — 生产级就绪评审报告</title>
+<style>
+  :root { --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; --green: #22c55e; --yellow: #eab308; --red: #ef4444; --blue: #3b82f6; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: var(--muted); margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 32px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card h2 { font-size: 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-green { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge-yellow { background: rgba(234,179,8,.15); color: var(--yellow); }
+  .badge-red { background: rgba(239,68,68,.15); color: var(--red); }
+  .score { font-size: 42px; font-weight: 700; margin: 8px 0; }
+  .score-green { color: var(--green); }
+  .score-yellow { color: var(--yellow); }
+  .score-red { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td { font-size: 14px; }
+  .section { margin-bottom: 32px; }
+  .section h2 { font-size: 22px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  .gap { background: rgba(239,68,68,.08); border-left: 3px solid var(--red); padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; }
+  .ok { background: rgba(34,197,94,.08); border-left: 3px solid var(--green); padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; }
+  .warn { background: rgba(234,179,8,.08); border-left: 3px solid var(--yellow); padding: 12px 16px; margin: 8px 0; border-radius: 0 8px 8px 0; }
+  code { background: rgba(59,130,246,.15); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>玲珑量化 — 生产级就绪评审报告</h1>
+  <p class="subtitle">评审日期：2026-09-23 | 评审人：GOV | 分支：fix/gate3-false-positive</p>
+
+  <!-- 总览 -->
+  <div class="grid">
+    <div class="card">
+      <h2>总体就绪度</h2>
+      <div class="score score-yellow">72 / 100</div>
+      <p style="color:var(--muted)">开发阶段接近生产级，需完成 15 项整改</p>
+    </div>
+    <div class="card">
+      <h2>QA-System 门禁</h2>
+      <div class="score score-green">0 errors</div>
+      <p style="color:var(--green)">✅ 代码层面全部清零</p>
+    </div>
+    <div class="card">
+      <h2>Blocked 状态</h2>
+      <div class="score score-green">False</div>
+      <p style="color:var(--muted)">无阻断项</p>
+    </div>
+    <div class="card">
+      <h2> linglong 业务仓</h2>
+      <div class="score score-yellow">23,745 py</div>
+      <p style="color:var(--yellow)">⚠ 39 dirty files，待评审</p>
+    </div>
+  </div>
+
+  <!-- 维度1: 门禁配置 -->
+  <div class="section">
+    <h2>维度 1：QA-System 门禁配置生产级合规</h2>
+
+    <div class="ok">
+      <strong>✅ 已达生产级：</strong>
+      <ul>
+        <li><code>semantic_truth_check</code> — BLOCKER（语义真实性）</li>
+        <li><code>docstring_code_check</code> — BLOCKER（docstring 可执行代码）</li>
+        <li><code>blindspot_check</code> — BLOCKER（盲区检测）</li>
+        <li><code>container_plane_check</code> — BLOCKER（容器平面）</li>
+        <li><code>solid_check.func_max_lines: 120</code> — 严格</li>
+      </ul>
+    </div>
+
+    <div class="warn">
+      <strong>⚠ 开发阶段放宽（生产级需收紧）：</strong>
+      <table>
+        <tr><th>配置项</th><th>当前值</th><th>生产级标准</th><th>整改动作</th></tr>
+        <tr><td>solid_check.severity</td><td>WARN</td><td>BLOCKER</td><td>上线前改 BLOCKER</td></tr>
+        <tr><td>fusedetect_check.severity</td><td>WARN</td><td>BLOCKER</td><td>上线前改 BLOCKER</td></tr>
+        <tr><td>docconsistency_check.severity</td><td>WARN</td><td>BLOCKER</td><td>上线前改 BLOCKER</td></tr>
+        <tr><td>runtime_drift_check.severity</td><td>WARN</td><td>BLOCKER</td><td>上线前改 BLOCKER</td></tr>
+        <tr><td>vcs_governance_check.severity</td><td>WARN</td><td>BLOCKER</td><td>上线前改 BLOCKER</td></tr>
+        <tr><td>solid_check.func_max_args</td><td>8</td><td>7</td><td>拆 __init__ 参数打包</td></tr>
+        <tr><td>solid_check.class_max_methods</td><td>25</td><td>16</td><td>拆 GateKeeper 到 mixin</td></tr>
+        <tr><td>container_plane.drift_grace</td><td>300s</td><td>60s</td><td>CI 流水线加容器重建步骤</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 维度2: 业务仓 -->
+  <div class="section">
+    <h2>维度 2：linglong 业务仓生产级就绪</h2>
+    <div class="gap">
+      <strong>❌ 待整改：</strong>
+      <ul>
+        <li>39 个 dirty files — 需确认是否未提交的 WIP</li>
+        <li>23,745 个 py 文件 — 需跑 qa-check 全量扫描</li>
+        <li>未配置 QA-System 门禁扫描 linglong 仓</li>
+        <li>TDX/NEWSFORGE/FACTOR_FORGE 三仓未纳入门禁</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 维度3: CI/CD -->
+  <div class="section">
+    <h2>维度 3：CI/CD 三库分离</h2>
+    <div class="warn">
+      <strong>⚠ 待确认：</strong>
+      <ul>
+        <li>.github 仓 PR #2：qa-gate.yml 待 approve</li>
+        <li>三库分离（qa-system / .github / linglong）是否完整</li>
+        <li>CI 流水线是否跑全量 checker（非 bootstrap 模式）</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 维度4: 基础设施 -->
+  <div class="section">
+    <h2>维度 4：容器/基础设施</h2>
+    <div class="ok">
+      <strong>✅ 已就绪：</strong>
+      <ul>
+        <li>linglong-scheduler — Up 2 hours (healthy)</li>
+        <li>linglong-clickhouse — Up 2 days (healthy)</li>
+        <li>linglong-postgres — Up 2 days (healthy)</li>
+        <li>linglong-redis — Up 2 days (healthy)</li>
+        <li>grafana — Up 2 hours</li>
+      </ul>
+    </div>
+    <div class="warn">
+      <strong>⚠ 生产级待加固：</strong>
+      <ul>
+        <li>容器资源限制（CPU/Memory limits）未配置</li>
+        <li>日志轮转未配置</li>
+        <li>监控告警（Alertmanager）待确认</li>
+        <li>数据库备份策略待确认</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 整改清单 -->
+  <div class="section">
+    <h2>生产级整改清单（按优先级）</h2>
+    <table>
+      <tr><th>优先级</th><th>整改项</th><th>负责</th><th>预计</th></tr>
+      <tr><td><span class="badge badge-red">P0</span></td><td>WARN→BLOCKER：solid/fusedetect/docconsistency/runtime_drift/vcs_governance</td><td>ISO</td><td>1d</td></tr>
+      <tr><td><span class="badge badge-red">P0</span></td><td>拆 GateKeeper 23 方法 → 16（mixin 拆分）</td><td>CB/KUN</td><td>2d</td></tr>
+      <tr><td><span class="badge badge-red">P0</span></td><td>拆 HealthScorer __init__ 8 参数 → 7（options dict）</td><td>CB</td><td>1d</td></tr>
+      <tr><td><span class="badge badge-yellow">P1</span></td><td>linglong 仓跑 qa-check 全量扫描</td><td>CB</td><td>1d</td></tr>
+      <tr><td><span class="badge badge-yellow">P1</span></td><td>.github 仓 PR #2 approve + CI 全量模式</td><td>OPS</td><td>0.5d</td></tr>
+      <tr><td><span class="badge badge-yellow">P1</span></td><td>drift_grace 300→60s（CI 加容器重建）</td><td>OPS</td><td>0.5d</td></tr>
+      <tr><td><span class="badge badge-yellow">P1</span></td><td>容器资源限制 + 日志轮转</td><td>OPS</td><td>1d</td></tr>
+      <tr><td><span class="badge badge-yellow">P2</span></td><td>TDX/NEWSFORGE/FACTOR_FORGE 三仓纳入门禁</td><td>ISO</td><td>2d</td></tr>
+      <tr><td><span class="badge badge-yellow">P2</span></td><td>数据库备份策略 + 告警通道</td><td>DAT/OPS</td><td>1d</td></tr>
+      <tr><td><span class="badge badge-green">P3</span></td><td>39 dirty files 确认 + 提交</td><td>各负责人</td><td>0.5d</td></tr>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

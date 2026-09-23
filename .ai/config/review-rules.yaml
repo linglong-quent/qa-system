@@ -452,10 +452,10 @@ naming_conflict_check:
   - "domain/decision/engines/rotation_engine.py:RotationSignal"
   - "domain/cognition/portrait/position_risk.py:PositionRiskState"
 solid_check:
-  enabled: true  # QA-System 自身不参与 SOLID 门禁（存量违规整改完成后可开启）
+  enabled: true
   scan_dirs:
   - scripts/
-  severity: WARN
+  severity: BLOCKER
   func_max_lines: 120
   func_max_args: 8
   class_max_methods: 25
@@ -467,7 +467,7 @@ solid_check:
   allowed_concrete: []
 fusedetect_check:
   enabled: true
-  severity: WARN
+  severity: BLOCKER
   scan_dirs:
   - src/
   triggers:
@@ -476,7 +476,7 @@ fusedetect_check:
   - socket
 docconsistency_check:
   enabled: true
-  severity: WARN
+  severity: BLOCKER
   code_dirs:
   - src/
   doc_dirs:
@@ -504,7 +504,7 @@ docstring_code_check:
   report_marker_only: true
 runtime_drift_check:
   enabled: true
-  severity: WARN          # CI runner 无宿主进程，探测失败即静默跳过
+  severity: BLOCKER          # CI runner 无宿主进程，探测失败即静默跳过
   scan_dirs:
   - scripts/
   - src/
@@ -514,7 +514,7 @@ runtime_drift_check:
   endpoint_guardians: {}
 vcs_governance_check:
   enabled: true
-  severity: WARN
+  severity: BLOCKER
   max_dirty_ratio: 0.5
   min_tracked: 50
   critical_min_files: 5
