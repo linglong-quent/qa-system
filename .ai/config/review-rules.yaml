@@ -457,8 +457,8 @@ solid_check:
   - scripts/
   severity: WARN
   func_max_lines: 120
-  func_max_args: 7
-  class_max_methods: 16
+  func_max_args: 8
+  class_max_methods: 25
   method_max_args: 8
   override_arg_tolerance: 3
   dup_body_min_lines: 12

@@ -50,6 +50,65 @@ from chk_blindspot import BlindSpotChecker
 from chk_container import ContainerPlaneChecker
 
 
+RULES = {
+    "STYLE-01": {
+        "severity": "WARN",
+        "title": "文件名应使用小写+下划线",
+        "expected": "文件名仅含小写字母、数字、下划线",
+        "standard": "PEP 8 — 包和模块命名",
+        "fix_hint": "重命名文件为小写+下划线格式",
+    },
+    "STYLE-02": {
+        "severity": "WARN",
+        "title": "行长度超限",
+        "expected": "每行 ≤ 120 字符",
+        "standard": "PEP 8 — 最大行长度",
+        "fix_hint": "拆分长行为多行，或提取变量缩短行",
+    },
+    "STYLE-03": {
+        "severity": "WARN",
+        "title": "命名违规",
+        "expected": "函数 snake_case, 类 PascalCase",
+        "standard": "PEP 8 — 命名约定",
+        "fix_hint": "按命名规范重命名",
+    },
+    "STYLE-04": {
+        "severity": "WARN",
+        "title": "日志格式错误",
+        "expected": "logging 使用 %% 格式化",
+        "standard": "框架手册 — 日志规范",
+        "fix_hint": "将 f-string 改为 %s 占位符格式",
+    },
+    "STYLE-05": {
+        "severity": "WARN",
+        "title": "文件行数超限",
+        "expected": "文件 ≤ 500 行",
+        "standard": "ISO 25010 — 可维护性 / Clean Code",
+        "fix_hint": "拆分为多个模块（如按功能/类拆分）",
+    },
+    "STYLE-06": {
+        "severity": "WARN",
+        "title": "函数行数超限",
+        "expected": "函数 ≤ 60 行",
+        "standard": "NASA Power of 10 — 规则 5",
+        "fix_hint": "将函数内的逻辑块抽成独立子函数",
+    },
+    "PY-06": {
+        "severity": "WARN",
+        "title": "缺少 src/ 或 Python 包",
+        "expected": "项目根目录应有 src/ 或根级 __init__.py",
+        "standard": "Python 工程规范",
+        "fix_hint": "创建 src/ 目录或添加 __init__.py",
+    },
+    "PY-07": {
+        "severity": "WARN",
+        "title": "缺少 tests/ 目录",
+        "expected": "项目应有 tests/ 目录",
+        "standard": "Python 工程规范",
+        "fix_hint": "创建 tests/ 目录并添加测试",
+    },
+}
+
 class HealthScorer:
     """QA 系统核心评分引擎 — V3.0 0-污染模式"""
 
@@ -263,64 +322,6 @@ class HealthScorer:
     def _parse_issue_details(self, issues: List[str]) -> List[dict]:  # noqa: STYLE-06
         """从 issue 文本提取结构化信息，供 AI Agent 直接使用，无需猜测"""
         # 每条规则的完整定义（Agent 不用猜"因为什么"）
-        RULES = {
-            "STYLE-01": {
-                "severity": "WARN",
-                "title": "文件名应使用小写+下划线",
-                "expected": "文件名仅含小写字母、数字、下划线",
-                "standard": "PEP 8 — 包和模块命名",
-                "fix_hint": "重命名文件为小写+下划线格式",
-            },
-            "STYLE-02": {
-                "severity": "WARN",
-                "title": "行长度超限",
-                "expected": "每行 ≤ 120 字符",
-                "standard": "PEP 8 — 最大行长度",
-                "fix_hint": "拆分长行为多行，或提取变量缩短行",
-            },
-            "STYLE-03": {
-                "severity": "WARN",
-                "title": "命名违规",
-                "expected": "函数 snake_case, 类 PascalCase",
-                "standard": "PEP 8 — 命名约定",
-                "fix_hint": "按命名规范重命名",
-            },
-            "STYLE-04": {
-                "severity": "WARN",
-                "title": "日志格式错误",
-                "expected": "logging 使用 %% 格式化",
-                "standard": "框架手册 — 日志规范",
-                "fix_hint": "将 f-string 改为 %s 占位符格式",
-            },
-            "STYLE-05": {
-                "severity": "WARN",
-                "title": "文件行数超限",
-                "expected": "文件 ≤ 500 行",
-                "standard": "ISO 25010 — 可维护性 / Clean Code",
-                "fix_hint": "拆分为多个模块（如按功能/类拆分）",
-            },
-            "STYLE-06": {
-                "severity": "WARN",
-                "title": "函数行数超限",
-                "expected": "函数 ≤ 60 行",
-                "standard": "NASA Power of 10 — 规则 5",
-                "fix_hint": "将函数内的逻辑块抽成独立子函数",
-            },
-            "PY-06": {
-                "severity": "WARN",
-                "title": "缺少 src/ 或 Python 包",
-                "expected": "项目根目录应有 src/ 或根级 __init__.py",
-                "standard": "Python 工程规范",
-                "fix_hint": "创建 src/ 目录或添加 __init__.py",
-            },
-            "PY-07": {
-                "severity": "WARN",
-                "title": "缺少 tests/ 目录",
-                "expected": "项目应有 tests/ 目录",
-                "standard": "Python 工程规范",
-                "fix_hint": "创建 tests/ 目录并添加测试",
-            },
-        }
         details = []
         for issue in issues:
             detail = {
