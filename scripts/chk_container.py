@@ -156,8 +156,9 @@ class ContainerPlaneChecker:
 
         for r in rows:
             name = r.get("Names", "")
-            # 只检查 linglong-* 项目容器，其他本地容器（dify/zeos/grafana）跳过
-            if not name.startswith("linglong-"):
+            # 只检查量化项目相关容器（TDX/NEWSFORGE/FACTOR_FORGE/QA-SYSTEM/LINGLONG）
+            _keep_prefixes = ("linglong-", "grafana", "tdx", "newsforge", "factor-forge", "qa-")
+            if not name.startswith(_keep_prefixes):
                 continue
             status = r.get("Status", "")
             state = (r.get("State") or "").lower()

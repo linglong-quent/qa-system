@@ -123,6 +123,7 @@ class GovernanceChecker:
     def _check_cleanup_and_encoding(self, issues: list) -> int:
         """Sections 4-6: pycache + encoding + __init__"""
         errors = 0
+        has_src = os.path.isdir(os.path.join(self.project_root, "src"))
         # ── 4. __pycache__ 清理检查 ──
         pycache_count = 0
         for root, dirs, files in os.walk(self.project_root):
