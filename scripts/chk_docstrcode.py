@@ -2,7 +2,7 @@
 """docstring 内可执行代码与名称绑定完整性（T29 追加类）
 
 背景（T28 P0）：`import logging` 与 `logger = logging.getLogger(__name__)`
-被自动化迁移（标记 `# print->logging migration`）插进了模块 docstring 内部
+被自动化迁移（标记 `# print 到 logging 的迁移标记`）插进了模块 docstring 内部
 （开三引号之后、而非闭三引号之后）。docstring 内文本永不执行 → `logger` 未绑定
 → 全文 `logger.` 调用首次即崩；而 **py_compile 完全通过**（那是合法 Python，
 只是一段字符串）。
