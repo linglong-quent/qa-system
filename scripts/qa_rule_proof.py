@@ -13,6 +13,17 @@
 import json
 import os
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 测试用端口和超时常量
+TEST_PORT = TEST_PORT
+CONNECTION_TIMEOUT = 0.5
+RETRY_INTERVAL = 0.25
+POST_START_DELAY = 1.2
+MAX_RETRIES = 40
+SAMPLE_TRUNCATE_LEN = 250
 import subprocess
 import sys
 import tempfile
@@ -338,26 +349,26 @@ def drift_case(tmpbase):
     with open(srv, "w", encoding="utf-8") as f:
         f.write("import socket, time\n"
                 "s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
-                "s.bind(('127.0.0.1', 53997)); s.listen(5)\n"
+                "s.bind(('127.0.0.1', TEST_PORT)); s.listen(5)\n"
                 "time.sleep(120)\n")
     proc = subprocess.Popen([sys.executable, srv], cwd=d,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        for _ in range(40):
+        for _ in range(MAX_RETRIES):
             try:
-                socket.create_connection(("127.0.0.1", 53997), timeout=0.5).close()
+                socket.create_connection(("127.0.0.1", TEST_PORT), timeout=CONNECTION_TIMEOUT).close()
                 break
             except Exception:
-                time.sleep(0.25)
-        time.sleep(1.2)
+                time.sleep(RETRY_INTERVAL)
+        time.sleep(POST_START_DELAY)
         with open(srv, "a", encoding="utf-8") as f:      # 注入：磁盘代码被改，进程未重启
             f.write("# hotfix after process start\n")
         checker = RuntimeDriftChecker({"scan_dirs": ["."], "probe_endpoints": False}, d)
         errors, issues = checker.check()
-        hits = [i for i in issues if "[DRIFT-PROC-001]" in i and "53997" in i]
+        hits = [i for i in issues if "[DRIFT-PROC-001]" in i and "TEST_PORT" in i]
         return {"rule": "DRIFT-PROC-001", "injected": True, "errors": errors,
                 "fired": bool(hits),
-                "sample": hits[0][:250] if hits else "(未命中该端口)",
+                "sample": hits[0][:SAMPLE_TRUNCATE_LEN] if hits else "(未命中该端口)",
                 "all_issues": issues[:5]}
     finally:
         try:
@@ -366,8 +377,8 @@ def drift_case(tmpbase):
         except Exception:
             try:
                 proc.kill()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("rule proof proc cleanup skipped: %s", e)
         shutil.rmtree(d, ignore_errors=True)
 
 

@@ -14,6 +14,7 @@
       gate-report.json  # 裁决阶段产物（qa_gate --run-id --json）
       tasks.json        # 分类后的可执行任务（qa_classify --run-id）
 """
+__all__ = ["new_run_id", "latest_run_id"]
 import json
 import os
 import re

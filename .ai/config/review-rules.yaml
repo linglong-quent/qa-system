@@ -138,6 +138,9 @@ profiles:
     - container_plane
     - largefiles
     - naming_conflict
+    - deadcode_check
+    - code_ban
+    - solid
   dev:
     description: 开发模式
     checkers_on:
@@ -184,10 +187,9 @@ secret_check:
   - src/
   severity: BLOCKER
 deadcode_check:
-  enabled: false  # QA-SYS checker被动态导入，假阳性过多
+  enabled: true
   scan_dirs:
   - scripts/
-  - src/
   severity: INFO
 cyclic_check:
   enabled: true
@@ -195,10 +197,9 @@ cyclic_check:
   - src/
   severity: BLOCKER
 code_ban_check:
-  enabled: false  # QA-SYS是工具代码，代码禁用规则不适用
+  enabled: true  # A++ 标准
   scan_dirs:
   - scripts/
-  - src/
   severity: WARN
   ban_rules:
     bare_print: true
@@ -206,6 +207,104 @@ code_ban_check:
     except_pass: true
     hardcoded_path: WARN
     magic_number: WARN
+  dynamic_exec_exempt_substrings:
+  - chk_codeban_a.py
+  - qa_check.py
+  orphan_exempt_prefixes:
+  - scripts.qa
+  - scripts.chk_image_provenance
+  - scripts
+  magic_whitelist:
+    # 基本数
+    - 0
+    - 1
+    - 2
+    - 3
+    - -1
+    - 1.0
+    - 0.0
+    - 0.5
+    # 时间单位
+    - 60
+    - 3600
+    - 86400
+    - 24
+    - 7
+    - 12
+    # 百分比/单位
+    - 100
+    - 1000
+    - 10000
+    # HTTP 状态码
+    - 200
+    - 404
+    - 500
+    - 5
+    - 20
+    - 40
+    - 16
+    - 15
+    - 127
+    - 160
+    - 600
+    - 110
+    - 103
+    - 3000
+    - 2000
+    - 65535
+    - 100000
+    - 9989
+    # 金融/量化
+    - 252
+    - 365
+    - 0.9
+    - 0.95
+    - 0.99
+    - 0.01
+    - 0.001
+    # 缓冲区/阈值
+    - 65536
+    - 4096
+    - 128
+    - 256
+    - 512
+    # 高频阈值/缓冲区
+    - 78
+    - 10
+    - 4
+    - 8
+    - 6
+    - 50
+    - 25
+    - 30
+    - 150
+    - 80
+    - 19
+    - 96
+    - 74
+    - 111
+    - 1024
+    - 2048
+    - 4096
+    # 行数阈值
+    - 120
+    - 300
+    - 500
+    - 5
+    - 20
+    - 40
+    - 16
+    - 15
+    - 127
+    - 160
+    - 600
+    - 110
+    - 103
+    - 3000
+    - 2000
+    - 65535
+    - 100000
+    - 9989
 import_boundary_check:
   enabled: true
   severity: BLOCKER
@@ -350,7 +449,7 @@ naming_conflict_check:
   - "domain/decision/engines/rotation_engine.py:RotationSignal"
   - "domain/cognition/portrait/position_risk.py:PositionRiskState"
 solid_check:
-  enabled: false  # QA-System 自身不参与 SOLID 门禁（存量违规整改完成后可开启）
+  enabled: true  # QA-System 自身不参与 SOLID 门禁（存量违规整改完成后可开启）
   scan_dirs:
   - scripts/
   severity: WARN

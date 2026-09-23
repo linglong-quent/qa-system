@@ -14,6 +14,8 @@
   * Docker 不可用 → 整体 skipped 并说明，不阻断。
 接口: check() -> (errors: int, issues: list[str])
 """
+import logging
+logger = logging.getLogger(__name__)
 import json
 import os
 import re
@@ -182,8 +184,8 @@ class ContainerPlaneChecker:
                     hlog = st.get("Health", {}).get("Log", [])
                     if hlog:
                         log = (hlog[-1].get("Output") or "").strip().replace("\n", " ")[:120]
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("container log fetch skipped: %s", e)
                 issues.append(
                     f"[CONT-002] 容器 '{name}' 健康探针报 unhealthy -> 探针判定失败 "
                     f"{('最近输出: ' + log) if log else ''}")

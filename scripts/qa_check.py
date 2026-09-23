@@ -5,11 +5,11 @@ import sys, os, logging
 if hasattr(sys.stdout, 'reconfigure'):
     try: sys.stdout.reconfigure(encoding='utf-8')   # py3.7+
     except Exception:
-        logging.debug("stdout.reconfigure 失败", exc_info=True)
+        logging.exception("stdout.reconfigure failed")
 if hasattr(sys.stderr, 'reconfigure'):
     try: sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
-        logging.debug("stderr.reconfigure 失败", exc_info=True)
+        logging.exception("stderr.reconfigure failed")
 """QA 系统统一入口 — 跨环境 (本地/CI/GitHub) 运行所有 checker。
 
 用法:
@@ -129,7 +129,7 @@ def run_single(checker_name: str, project_root: str = _PROJECT_ROOT):  # noqa: S
         sys.exit(1)
 
     mod_name, cls_name = CHECKER_MAP[checker_name]
-    mod = __import__(mod_name, fromlist=[cls_name])
+    mod = __import__(mod_name, fromlist=[cls_name])  # noqa: BAN-8 (动态加载 checker 模块，可信)
     cls = getattr(mod, cls_name)
 
     # 0-污染模式：优先从 QA-System/.ai/projects/{project_name}_local.yaml 加载

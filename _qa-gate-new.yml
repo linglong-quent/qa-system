@@ -1,0 +1,34 @@
+name: QA Gate
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  qa-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout linglong PR code
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.number }}/merge
+
+      - name: Checkout qa-system
+        uses: actions/checkout@v4
+        with:
+          repository: linglong-quent/qa-system
+          path: qa-system
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: QA Full Check (on linglong)
+        working-directory: qa-system
+        run: python scripts/qa_check.py health --project ..

@@ -144,13 +144,6 @@ class LargeFilesChecker:
                 repaired.append(rel)
         return repaired
 
-    def get_warnings(self) -> List[str]:
-        """获取存量违规警告（不阻断）.
-
-        Deprecated: 警告已合并到 check() 返回的 issues 中（标记 [LARGE-02]）.
-        保留此方法仅用于向后兼容。
-        """
-        return []
 
 
 def main():  # noqa: STYLE-06

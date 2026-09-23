@@ -299,7 +299,7 @@ class CodeBanChecker(CodeBanMid):
                 continue
             if mod_base in referenced_leaves or mod_base in {"main"}:
                 continue
-            if mod in referenced_modules:
+            if mod in referenced_modules or mod_base in referenced_modules:
                 continue
             if exempt_prefixes and mod.startswith(exempt_prefixes):
                 continue

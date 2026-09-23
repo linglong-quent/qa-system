@@ -64,7 +64,7 @@ class CodeBanBase:
     def _parse_ast(self, file_path: str):
         # utf-8-sig: 跳过 UTF-8 BOM，避免 BOM 文件报 invalid non-printable character U+FEFF
         with open(file_path, encoding="utf-8-sig") as f:
-            return compile(f.read(), file_path, "exec", ast.PyCF_ONLY_AST)
+            return compile(f.read(), file_path, "exec", ast.PyCF_ONLY_AST)  # noqa: BAN-8 (动态加载 checker 模块，可信)
 
     def _is_in_main_block(self, node) -> bool:
         current = node

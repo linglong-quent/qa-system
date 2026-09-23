@@ -10,6 +10,8 @@
   每条规则都要求"强证据组合"才报，宁可漏报不可误报。
 接口: check() -> (errors: int, issues: list[str])
 """
+import logging
+logger = logging.getLogger(__name__)
 import ast
 import os
 import re
@@ -133,8 +135,8 @@ def _comments_of(src: str) -> set:
         for tok in tokenize.generate_tokens(io.StringIO(src).readline):
             if tok.type == tokenize.COMMENT and STUB_COMMENT.search(tok.string):
                 lines.add(tok.start[0])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("semantic token scan skipped: %s", e)
     return lines
 
 
