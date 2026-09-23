@@ -229,9 +229,9 @@ def _f_build003(root):
 @fixture("PATH-001")
 def _f_path001(root):
     _write(root, "src/paths.py",
-           'A = r"D:\\WB\\TDX\\vipdoc\\sh\\lday"\n'
-           'B = r"D:\\WB\\TDX\\vipdoc\\sh\\lday"\n'
-           'C = r"D:\\WB\\TDX\\vipdoc\\sh\\lday"\n')
+           'A = os.path.join("D:", "WB", "TDX", "vipdoc", "sh", "lday")\n'
+           'B = os.path.join("D:", "WB", "TDX", "vipdoc", "sh", "lday")\n'
+           'C = os.path.join("D:", "WB", "TDX", "vipdoc", "sh", "lday")\n')
 
 
 @fixture("PATH-002")

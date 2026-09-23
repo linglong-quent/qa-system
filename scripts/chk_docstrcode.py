@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checker: docstring 内可执行代码与名称绑定完整性（T29 追加类）
+"""docstring 内可执行代码与名称绑定完整性（T29 追加类）
 
 背景（T28 P0）：`import logging` 与 `logger = logging.getLogger(__name__)`
 被自动化迁移（标记 `# print->logging migration`）插进了模块 docstring 内部
