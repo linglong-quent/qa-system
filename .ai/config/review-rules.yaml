@@ -493,6 +493,9 @@ semantic_truth_check:
   - src/
   - scripts/
   - domain/
+  - D:/WB/TDX
+  - D:/WB/NEWSFORGE
+  - D:/WB/factor_forge
   random_block_min_fields: 3
 docstring_code_check:
   enabled: true
